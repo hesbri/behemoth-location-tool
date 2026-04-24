@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "projectName": "Behemoth Mansion",
+  "gameRoot": "..",
+  "gameExecutable": "..\\bin\\Behemoth.exe",
+  "contentRoot": "data/behemoth",
+  "imageRoot": "data/behemoth/assets/images",
+  "gameDataRoot": "data/behemoth/game",
+  "toolDataRoot": ".behemoth_tool",
+  "designWidth": 1920,
+  "designHeight": 1080,
+  "previewPort": 38171
+}

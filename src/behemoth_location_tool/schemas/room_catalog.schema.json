@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Behemoth Room Catalog", "type": "object", "required": ["version", "rooms"], "properties": { "version": { "const": 2 }, "rooms": { "type": "array" } }, "additionalProperties": false }
