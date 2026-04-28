@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from behemoth_location_tool.io.location_factory import (
+    DEFAULT_BACK_EXIT_ENTITY_ID,
     add_graph_node_for_location,
     create_location_from_room,
 )
@@ -104,9 +105,60 @@ class TestCreateLocationFromRoom:
         loc = create_location_from_room(room, is_start=False, start_location_id="hall")
         assert len(loc.exits) == 1
         ex = loc.exits[0]
+        assert ex.entity_id == DEFAULT_BACK_EXIT_ENTITY_ID
+        assert ex.socket_id
         assert "exit.default_back" in ex.tags
         assert ex.target_location_id == "hall"
         assert ex.layer == "exit_behind"
+        assert any(sock.id == ex.socket_id for sock in loc.sockets)
+
+    def test_non_start_location_validates_cleanly_when_exit_entity_exists(self) -> None:
+        from behemoth_location_tool.model.entity import EntityDefinition
+        from behemoth_location_tool.model.room import RoomCatalog
+
+        hall_room = RoomCatalogEntry(
+            id="hall",
+            name="Hall",
+            layers=LayerConfig(mode="custom", order=["background", "exit_behind", "exit_front", "characters"]),
+            sockets=[SocketDefinition(id="sock_hall", name="Hall Exit", x=400, y=900, layer="exit_front")],
+        )
+        library_room = RoomCatalogEntry(
+            id="library",
+            name="Library",
+            layers=LayerConfig(mode="custom", order=["background", "exit_behind", "exit_front", "characters"]),
+            sockets=[SocketDefinition(id="sock_lib", name="Library Exit", x=1200, y=900, layer="exit_front")],
+        )
+        catalog = RoomCatalog(rooms=[hall_room, library_room])
+
+        start = create_location_from_room(hall_room, is_start=True)
+        non_start = create_location_from_room(library_room, is_start=False, start_location_id=start.id)
+        start.exits.append(
+            ExitDefinition(
+                id="exit_hall_to_library",
+                entity_id=DEFAULT_BACK_EXIT_ENTITY_ID,
+                target_location_id=non_start.id,
+                socket_id="sock_hall",
+                layer="exit_front",
+                tags=["exit.door"],
+            )
+        )
+
+        locations_file = LocationsFile(
+            start_location=start.id,
+            locations=[start, non_start],
+        )
+        entities = [
+            EntityDefinition(
+                id=DEFAULT_BACK_EXIT_ENTITY_ID,
+                kind="exit",
+                name="Default Back Exit",
+                description="A default back exit entity.",
+                tags=["exit.door"],
+            )
+        ]
+        report = validate_locations(locations_file, catalog=catalog, entities=entities)
+        errors = [diag for diag in report.diagnostics if diag.severity.value == "error"]
+        assert errors == [], [diag.message for diag in errors]
 
     def test_custom_location_id(self) -> None:
         room = _make_room()

@@ -336,6 +336,10 @@ class TestMainWindowSourceChecks:
         src = self._src("behemoth_location_tool.ui.validate_tab")
         assert "_copy_button" in src or "Copy" in src
 
+    def test_validate_tab_runtime_callback_hook_exists(self) -> None:
+        src = self._src("behemoth_location_tool.ui.validate_tab")
+        assert "set_runtime_validation_callback" in src
+
     def test_validate_tab_sorting_enabled(self) -> None:
         src = self._src("behemoth_location_tool.ui.validate_tab")
         assert "setSortingEnabled(True)" in src
@@ -353,6 +357,11 @@ class TestMainWindowSourceChecks:
     def test_preview_tab_has_set_active_location(self) -> None:
         src = self._src("behemoth_location_tool.ui.preview_tab")
         assert "def set_active_location" in src
+
+    def test_main_window_wires_runtime_validation(self) -> None:
+        src = self._src("behemoth_location_tool.ui.main_window")
+        assert "set_runtime_validation_callback" in src
+        assert "request_runtime_validation" in src
 
     def test_room_catalog_tab_has_is_dirty(self) -> None:
         src = self._src("behemoth_location_tool.ui.room_catalog_tab")

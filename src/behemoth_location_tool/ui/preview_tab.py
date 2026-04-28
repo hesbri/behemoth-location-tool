@@ -79,17 +79,22 @@ class PreviewTab(QWidget):
         debug_layout = QHBoxLayout(debug_group)
         self._cb_sockets = QCheckBox("Sockets")
         self._cb_sockets.setChecked(True)
+        self._cb_socket_names = QCheckBox("Socket Names")
+        self._cb_socket_names.setChecked(True)
         self._cb_clickable = QCheckBox("Clickable Rects")
         self._cb_clickable.setChecked(True)
         self._cb_safe_area = QCheckBox("Safe Area")
         self._cb_layer_names = QCheckBox("Layer Names")
+        self._cb_instance_ids = QCheckBox("Placed Instance IDs")
         self._apply_overlay_btn = QPushButton("Apply Overlay")
         self._apply_overlay_btn.setEnabled(False)
         self._apply_overlay_btn.clicked.connect(self._on_apply_overlay)
         debug_layout.addWidget(self._cb_sockets)
+        debug_layout.addWidget(self._cb_socket_names)
         debug_layout.addWidget(self._cb_clickable)
         debug_layout.addWidget(self._cb_safe_area)
         debug_layout.addWidget(self._cb_layer_names)
+        debug_layout.addWidget(self._cb_instance_ids)
         debug_layout.addWidget(self._apply_overlay_btn)
         debug_layout.addStretch(1)
         root.addWidget(debug_group)
@@ -171,9 +176,11 @@ class PreviewTab(QWidget):
     def _on_apply_overlay(self) -> None:
         self._controller.send_debug_overlay(
             show_sockets=self._cb_sockets.isChecked(),
+            show_socket_names=self._cb_socket_names.isChecked(),
             show_clickable_rects=self._cb_clickable.isChecked(),
             show_safe_area=self._cb_safe_area.isChecked(),
             show_layer_names=self._cb_layer_names.isChecked(),
+            show_placed_instance_ids=self._cb_instance_ids.isChecked(),
         )
 
     # ---- Signal handlers (queued from background threads) ----

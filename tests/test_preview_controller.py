@@ -1,8 +1,14 @@
 import json
 from pathlib import Path
+
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.preview.controller import ConnectionState, PreviewController
-from behemoth_location_tool.preview.protocol import hello, load_preview_snapshot, set_debug_overlay
+from behemoth_location_tool.preview.protocol import (
+    hello,
+    load_preview_snapshot,
+    set_debug_overlay,
+    validate_runtime,
+)
 from behemoth_location_tool.preview.snapshot import build_empty_preview_snapshot, write_preview_snapshot
 
 
@@ -56,13 +62,28 @@ def test_protocol_load_preview_snapshot() -> None:
 
 
 def test_protocol_set_debug_overlay() -> None:
-    msg = set_debug_overlay(show_sockets=True, show_clickable_rects=False, show_safe_area=True, show_layer_names=False)
+    msg = set_debug_overlay(
+        show_sockets=True,
+        show_socket_names=True,
+        show_clickable_rects=False,
+        show_safe_area=True,
+        show_layer_names=False,
+        show_placed_instance_ids=True,
+    )
     data = json.loads(msg.to_json_line())
     assert data["type"] == "set_debug_overlay"
     assert data["showSockets"] is True
+    assert data["showSocketNames"] is True
     assert data["showClickableRects"] is False
     assert data["showSafeArea"] is True
     assert data["showLayerNames"] is False
+    assert data["showPlacedInstanceIds"] is True
+
+
+def test_protocol_validate_runtime_message() -> None:
+    msg = validate_runtime()
+    data = json.loads(msg.to_json_line())
+    assert data["type"] == "validate_runtime"
 
 
 def test_preview_server_start_stop(tmp_path: Path) -> None:
@@ -102,3 +123,23 @@ def test_snapshot_writes_on_start(tmp_path: Path) -> None:
     data = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert data["version"] == 1
     ctrl.stop()
+
+
+def test_runtime_validation_result_callback() -> None:
+    ctrl = PreviewController(ProjectConfig(project_name="Test"))
+    received: list[dict[str, str]] = []
+    ctrl.on_runtime_validation_result = lambda diagnostics: received.extend(diagnostics)
+
+    ctrl._on_raw_message(
+        {
+            "type": "runtime_validation_result",
+            "errors": [{"code": "bad_exit", "message": "Missing exit socket"}],
+            "warnings": [{"code": "warn_missing_sprite", "message": "Sprite missing"}],
+            "infos": [{"code": "info_flag", "message": "Flag conditions not evaluated"}],
+        }
+    )
+
+    assert len(received) == 3
+    assert received[0]["severity"] == "error"
+    assert received[1]["severity"] == "warning"
+    assert received[2]["severity"] == "info"

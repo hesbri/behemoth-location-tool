@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -46,6 +47,7 @@ class ValidateTab(QWidget):
         super().__init__()
         self.project = project
         self._diagnostics: list[Diagnostic] = []
+        self._runtime_validate_callback: Callable[[], None] | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -136,6 +138,11 @@ class ValidateTab(QWidget):
         self._diagnostics = _sort_diagnostics(list(report.diagnostics))
         self._populate_table()
         self._update_counts()
+        if self._runtime_checkbox.isChecked() and self._runtime_validate_callback is not None:
+            self._runtime_validate_callback()
+
+    def set_runtime_validation_callback(self, callback: Callable[[], None]) -> None:
+        self._runtime_validate_callback = callback
 
     def add_runtime_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
         """Merge runtime diagnostics into the current results."""

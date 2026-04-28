@@ -12,6 +12,7 @@ from behemoth_location_tool.preview.protocol import (
     hello,
     load_preview_snapshot,
     set_debug_overlay,
+    validate_runtime,
 )
 from behemoth_location_tool.preview.server import PreviewServerController
 from behemoth_location_tool.preview.snapshot import build_empty_preview_snapshot, write_preview_snapshot
@@ -43,6 +44,7 @@ class PreviewController:
         self.on_connection_changed: Callable[[str], None] = lambda state: None
         self.on_log_message: Callable[[str, str], None] = lambda direction, line: None
         self.on_diagnostic: Callable[[str, str], None] = lambda level, msg: None
+        self.on_runtime_validation_result: Callable[[list[dict[str, str]]], None] = lambda diagnostics: None
 
     @property
     def state(self) -> str:
@@ -119,15 +121,29 @@ class PreviewController:
         self._send_message(msg)
 
     def send_debug_overlay(
-        self, *, show_sockets: bool, show_clickable_rects: bool,
-        show_safe_area: bool, show_layer_names: bool,
+        self,
+        *,
+        show_sockets: bool,
+        show_socket_names: bool,
+        show_clickable_rects: bool,
+        show_safe_area: bool,
+        show_layer_names: bool,
+        show_placed_instance_ids: bool,
     ) -> None:
         """Send set_debug_overlay message to the connected client."""
         msg = set_debug_overlay(
-            show_sockets=show_sockets, show_clickable_rects=show_clickable_rects,
-            show_safe_area=show_safe_area, show_layer_names=show_layer_names,
+            show_sockets=show_sockets,
+            show_socket_names=show_socket_names,
+            show_clickable_rects=show_clickable_rects,
+            show_safe_area=show_safe_area,
+            show_layer_names=show_layer_names,
+            show_placed_instance_ids=show_placed_instance_ids,
         )
         self._send_message(msg)
+
+    def request_runtime_validation(self) -> None:
+        """Request runtime-side validation from the connected preview client."""
+        self._send_message(validate_runtime())
 
     def _set_state(self, state: str) -> None:
         self._state = state
@@ -244,6 +260,28 @@ class PreviewController:
             self.on_diagnostic("error", f"Invalid JSON from client: {message.get('error', '')}")
         elif msg_type == "error":
             self.on_diagnostic("error", message.get("message", "Unknown error from client"))
+        elif msg_type == "runtime_validation_result":
+            runtime_diagnostics: list[dict[str, str]] = []
+
+            def _append_entries(entries: Any, severity: str) -> None:
+                if not isinstance(entries, list):
+                    return
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        code = str(entry.get("code", "runtime_validation"))
+                        text = str(entry.get("message", ""))
+                    else:
+                        code = "runtime_validation"
+                        text = str(entry)
+                    runtime_diagnostics.append(
+                        {"severity": severity, "code": code, "message": text}
+                    )
+                    self.on_diagnostic(severity, f"[{code}] {text}")
+
+            _append_entries(message.get("errors", []), "error")
+            _append_entries(message.get("warnings", []), "warning")
+            _append_entries(message.get("infos", []), "info")
+            self.on_runtime_validation_result(runtime_diagnostics)
 
     def _send_message(self, msg: PreviewMessage) -> None:
         """Send a PreviewMessage, logging it."""

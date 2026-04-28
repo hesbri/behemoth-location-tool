@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from behemoth_location_tool.io.location_factory import (
     add_graph_node_for_location,
+    add_default_back_exit_with_socket,
     create_location_from_room,
 )
 from behemoth_location_tool.io.locations_loader import load_locations, save_locations
@@ -719,23 +720,20 @@ class LocationsTab(QWidget):
         existing = {loc.id for loc in self._locations_file.locations}
         new_id = generate_padded_id("new_location", existing, fallback="location")
         new_name = f"Location {len(self._locations_file.locations) + 1}"
+        is_start = not self._locations_file.locations
         loc = LocationInstance(
             id=new_id,
             catalog_room_id="",
             name=new_name,
         )
-        # Add default back exit
-        start = self._locations_file.start_location
-        exit_id = generate_id("default_exit", set(), fallback="exit")
-        loc.exits.append(ExitDefinition(
-            id=exit_id,
-            entity_id=exit_id,
-            target_location_id=start, socket_id="",
-            layer="exit_behind", tags=["exit.default_back"],
-        ))
+        if not is_start:
+            add_default_back_exit_with_socket(
+                loc,
+                target_location_id=self._locations_file.start_location,
+            )
         self._locations_file.locations.append(loc)
         add_graph_node_for_location(self._locations_file, loc.id)
-        if not self._locations_file.start_location:
+        if is_start:
             self._locations_file.start_location = loc.id
         self._refresh_list()
         self._list.setCurrentRow(len(self._locations_file.locations) - 1)

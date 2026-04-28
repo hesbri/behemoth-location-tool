@@ -23,6 +23,7 @@ from behemoth_location_tool.ui.preview_tab import PreviewTab
 from behemoth_location_tool.ui.project_tab import ProjectTab
 from behemoth_location_tool.ui.room_catalog_tab import RoomCatalogTab
 from behemoth_location_tool.ui.validate_tab import ValidateTab
+from behemoth_location_tool.validation.diagnostics import Diagnostic, Severity
 
 
 class MainWindow(QMainWindow):
@@ -185,6 +186,8 @@ class MainWindow(QMainWindow):
 
         self._preview_tab = PreviewTab(self.project)
         tabs.addTab(self._preview_tab, "Preview")
+        self._preview_tab.controller.on_runtime_validation_result = self._on_runtime_validation_result
+        self._validate_tab.set_runtime_validation_callback(self._request_runtime_validation)
 
         self._room_catalog_tab.set_preview_callback(self._on_room_preview)
         self._room_catalog_tab.set_catalog_changed_callback(self._sync_catalog_to_locations)
@@ -276,6 +279,42 @@ class MainWindow(QMainWindow):
         ctrl = self._preview_tab.controller
         if ctrl.is_running:
             ctrl.send_load_preview()
+
+    def _request_runtime_validation(self) -> None:
+        controller = self._preview_tab.controller
+        if not controller.is_running:
+            self._validate_tab.add_runtime_diagnostics(
+                [
+                    Diagnostic(
+                        severity=Severity.WARNING,
+                        code="runtime_disconnected",
+                        message="Runtime validation requested, but preview runtime is not running.",
+                        source="runtime",
+                    )
+                ]
+            )
+            return
+        controller.request_runtime_validation()
+
+    def _on_runtime_validation_result(self, diagnostics: list[dict[str, str]]) -> None:
+        mapped: list[Diagnostic] = []
+        for item in diagnostics:
+            severity_str = item.get("severity", "info")
+            if severity_str == "error":
+                severity = Severity.ERROR
+            elif severity_str == "warning":
+                severity = Severity.WARNING
+            else:
+                severity = Severity.INFO
+            mapped.append(
+                Diagnostic(
+                    severity=severity,
+                    code=item.get("code", "runtime_validation"),
+                    message=item.get("message", ""),
+                    source="runtime",
+                )
+            )
+        self._validate_tab.add_runtime_diagnostics(mapped)
 
     def _sync_catalog_to_locations(self) -> None:
         self._locations_tab.set_catalog(self._room_catalog_tab.catalog)
