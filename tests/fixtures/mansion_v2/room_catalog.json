@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "rooms": [
+    {
+      "id": "entrance_hall_01",
+      "name": "Entrance Hall",
+      "backgroundImage": "rooms/entrance_hall_01.png",
+      "designSize": {"w": 1920, "h": 1080},
+      "tags": ["room.interior", "room.public"],
+      "sockets": [
+        {"id": "exit_to_library", "name": "To Library", "x": 1800, "y": 540, "layer": "exit_front"},
+        {"id": "exit_to_kitchen", "name": "To Kitchen", "x": 120,  "y": 540, "layer": "exit_front"},
+        {"id": "prop_01", "name": "Prop Slot 1", "x": 500,  "y": 820, "layer": "front_props"},
+        {"id": "prop_02", "name": "Prop Slot 2", "x": 1200, "y": 820, "layer": "front_props"}
+      ]
+    },
+    {
+      "id": "library_01",
+      "name": "Library",
+      "backgroundImage": "rooms/library_01.png",
+      "designSize": {"w": 1920, "h": 1080},
+      "tags": ["room.interior", "room.study"],
+      "sockets": [
+        {"id": "exit_to_entrance", "name": "To Entrance Hall", "x": 120, "y": 540, "layer": "exit_front"},
+        {"id": "prop_01", "name": "Prop Slot 1", "x": 400,  "y": 820, "layer": "front_props"},
+        {"id": "prop_02", "name": "Prop Slot 2", "x": 1400, "y": 820, "layer": "front_props"}
+      ]
+    },
+    {
+      "id": "kitchen_01",
+      "name": "Kitchen",
+      "backgroundImage": "rooms/kitchen_01.png",
+      "designSize": {"w": 1920, "h": 1080},
+      "tags": ["room.interior", "room.service"],
+      "sockets": [
+        {"id": "exit_to_entrance", "name": "To Entrance Hall", "x": 120, "y": 540, "layer": "exit_front"},
+        {"id": "prop_01", "name": "Prop Slot 1", "x": 600,  "y": 820, "layer": "front_props"},
+        {"id": "prop_02", "name": "Prop Slot 2", "x": 1300, "y": 820, "layer": "front_props"}
+      ]
+    }
+  ]
+}

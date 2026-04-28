@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Behemoth Entity Module",
+  "description": "A collection of entity definitions.",
+  "type": "object",
+  "required": ["version", "entities"],
+  "properties": {
+    "version": { "const": 2 },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entityDefinition" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entityDefinition": {
+      "type": "object",
+      "required": ["id", "kind", "name", "description"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["item", "character", "prop", "furniture", "exit", "clue", "container", "custom"]
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "render": { "$ref": "#/$defs/renderData" },
+        "spawnRules": { "$ref": "#/$defs/spawnRules" },
+        "interactions": { "type": "array", "items": { "type": "object" } },
+        "character": { "type": ["object", "null"] },
+        "inventory": { "type": "array", "items": { "type": "object" } },
+        "editor": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "renderData": {
+      "type": "object",
+      "properties": {
+        "sprite": { "type": ["string", "null"] },
+        "defaultLayer": { "type": ["string", "null"] },
+        "pivot": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["bottom", "center", "spawnable_default"] },
+            "x": { "type": "integer" },
+            "y": { "type": "integer" }
+          },
+          "additionalProperties": false
+        },
+        "clickableRect": { "$ref": "#/$defs/rect" }
+      },
+      "additionalProperties": false
+    },
+    "spawnRules": {
+      "type": "object",
+      "properties": {
+        "requiredContextTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenContextTags": { "type": "array", "items": { "type": "string" } },
+        "exclusiveGroups": { "type": "array", "items": { "type": "string" } },
+        "savePolicy": { "type": "string", "enum": ["persistent", "transient", "regenerate_on_new_game"] }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "w": { "type": "integer" },
+        "h": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

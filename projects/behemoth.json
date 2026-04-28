@@ -1,8 +1,8 @@
 {
   "version": 1,
   "projectName": "Behemoth Mansion",
-  "gameRoot": "..",
-  "gameExecutable": "..\\bin\\Behemoth.exe",
+  "gameRoot": "../../Brutalist",
+  "gameExecutable": "bin/BehemothLauncher/x64/Release/BehemothLauncher.exe",
   "contentRoot": "data/behemoth",
   "imageRoot": "data/behemoth/assets/images",
   "gameDataRoot": "data/behemoth/game",

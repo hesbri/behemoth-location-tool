@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "startLocation": "entrance_hall_01",
+  "mansionSeed": 12345,
+  "graph": {
+    "nodes": [
+      {"locationId": "entrance_hall_01", "x": 0,   "y": 0},
+      {"locationId": "library_01",       "x": 200, "y": 0},
+      {"locationId": "kitchen_01",       "x": 0,   "y": 200}
+    ]
+  },
+  "locations": [
+    {
+      "id": "entrance_hall_01",
+      "catalogRoomId": "entrance_hall_01",
+      "name": "Entrance Hall",
+      "description": "The grand entrance to the mansion.",
+      "exits": [
+        {
+          "id": "exit_to_lib_01",
+          "entityId": "door_double_01",
+          "targetLocationId": "library_01",
+          "socketId": "exit_to_library",
+          "tags": []
+        },
+        {
+          "id": "exit_to_kit_01",
+          "entityId": "door_single_01",
+          "targetLocationId": "kitchen_01",
+          "socketId": "exit_to_kitchen",
+          "tags": []
+        }
+      ],
+      "placedEntities": [
+        {
+          "instanceId": "pe_chair_entrance_01",
+          "entityId": "chair_01",
+          "socketId": "prop_01",
+          "placementSource": "manual"
+        }
+      ]
+    },
+    {
+      "id": "library_01",
+      "catalogRoomId": "library_01",
+      "name": "Library",
+      "description": "A room lined with towering bookshelves.",
+      "exits": [
+        {
+          "id": "exit_to_entrance_01",
+          "entityId": "door_double_01",
+          "targetLocationId": "entrance_hall_01",
+          "socketId": "exit_to_entrance",
+          "tags": ["exit.default_back"]
+        }
+      ],
+      "placedEntities": [
+        {
+          "instanceId": "pe_bookcase_lib_01",
+          "entityId": "bookcase_01",
+          "socketId": "prop_01",
+          "placementSource": "manual"
+        }
+      ]
+    },
+    {
+      "id": "kitchen_01",
+      "catalogRoomId": "kitchen_01",
+      "name": "Kitchen",
+      "description": "The mansion's working kitchen.",
+      "exits": [
+        {
+          "id": "exit_to_entrance_01",
+          "entityId": "door_single_01",
+          "targetLocationId": "entrance_hall_01",
+          "socketId": "exit_to_entrance",
+          "tags": ["exit.default_back"]
+        }
+      ]
+    }
+  ]
+}

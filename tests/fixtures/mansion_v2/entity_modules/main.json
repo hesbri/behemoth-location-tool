@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "entities": [
+    {
+      "id": "door_double_01",
+      "kind": "exit",
+      "name": "Double Door",
+      "description": "A heavy double door.",
+      "tags": ["exit.door"]
+    },
+    {
+      "id": "door_single_01",
+      "kind": "exit",
+      "name": "Single Door",
+      "description": "A narrow single door.",
+      "tags": ["exit.door"]
+    },
+    {
+      "id": "chair_01",
+      "kind": "furniture",
+      "name": "Wooden Chair",
+      "description": "A plain wooden chair.",
+      "tags": ["furniture.chair", "entity.spawnable"]
+    },
+    {
+      "id": "bookcase_01",
+      "kind": "furniture",
+      "name": "Tall Bookcase",
+      "description": "A tall bookcase packed with books.",
+      "tags": ["furniture.bookcase", "entity.spawnable"]
+    }
+  ]
+}

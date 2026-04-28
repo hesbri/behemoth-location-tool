@@ -1,1 +1,134 @@
-{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Behemoth Room Catalog", "type": "object", "required": ["version", "rooms"], "properties": { "version": { "const": 2 }, "rooms": { "type": "array" } }, "additionalProperties": false }
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Behemoth Room Catalog",
+  "description": "Reusable room templates.",
+  "type": "object",
+  "required": ["version", "rooms"],
+  "properties": {
+    "version": { "const": 2 },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/roomCatalogEntry"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "roomCatalogEntry": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "backgroundImage": { "type": ["string", "null"] },
+        "designSize": {
+          "type": "object",
+          "properties": {
+            "w": { "type": "integer", "minimum": 1 },
+            "h": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["w", "h"],
+          "additionalProperties": false
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "layers": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": { "const": "project_default" },
+                "overrides": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["mode"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": { "const": "custom" },
+                "order": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+              },
+              "required": ["mode", "order"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "sockets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/socketDefinition" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "socketDefinition": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "rotation": { "type": "number" },
+        "scale": { "type": "number" },
+        "pivotMode": { "type": "string", "enum": ["bottom", "center", "spawnable_default"] },
+        "layer": { "type": "string" },
+        "sortOrder": { "type": "integer" },
+        "requiredTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+        "ambientSpawnChance": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "ambientRule": { "$ref": "#/$defs/ambientRule" },
+        "allowedEntityIds": { "type": "array", "items": { "type": "string" } },
+        "editor": {
+          "type": "object",
+          "properties": {
+            "notes": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "ambientRule": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "tag_query", "weighted_entity_list", "weighted_entries"] },
+        "requiredTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["entityId", "weight"],
+            "properties": {
+              "entityId": { "type": "string" },
+              "weight": { "type": "integer", "minimum": 1, "maximum": 100 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fillEntries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "weight"],
+            "properties": {
+              "type": { "type": "string", "enum": ["entity", "tag_query"] },
+              "entityId": { "type": "string" },
+              "requiredTags": { "type": "array", "items": { "type": "string" } },
+              "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+              "weight": { "type": "integer", "minimum": 1, "maximum": 100 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

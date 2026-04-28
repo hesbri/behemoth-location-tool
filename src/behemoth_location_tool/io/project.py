@@ -3,6 +3,7 @@ from pathlib import Path
 from behemoth_location_tool.io.json_io import read_json, write_json
 from behemoth_location_tool.model.project import ProjectConfig
 
+
 def load_project_or_default(path: Path | None) -> ProjectConfig:
     if path is None:
         return ProjectConfig()
@@ -10,9 +11,9 @@ def load_project_or_default(path: Path | None) -> ProjectConfig:
         raise FileNotFoundError(path)
     data = read_json(path)
     project = ProjectConfig.model_validate(data)
-    if not project.game_root.is_absolute():
-        project.game_root = (path.parent / project.game_root).resolve()
+    project.resolve_paths(path.parent)
     return project
+
 
 def save_project(path: Path, project: ProjectConfig) -> None:
     write_json(path, project.model_dump(by_alias=True, mode="json"))

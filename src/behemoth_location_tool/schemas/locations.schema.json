@@ -1,1 +1,179 @@
-{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Behemoth Locations v2", "type": "object", "required": ["version", "startLocation", "locations"], "properties": { "version": { "const": 2 }, "startLocation": { "type": "string" }, "mansionSeed": { "type": "integer" }, "graph": { "type": "object" }, "locations": { "type": "array" } }, "additionalProperties": true }
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Behemoth Locations",
+  "description": "Actual mansion location instances and graph.",
+  "type": "object",
+  "required": ["version", "startLocation", "locations"],
+  "properties": {
+    "version": { "const": 2 },
+    "startLocation": { "type": "string", "minLength": 1 },
+    "mansionSeed": { "type": "integer" },
+    "graph": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["locationId"],
+            "properties": {
+              "locationId": { "type": "string" },
+              "x": { "type": "integer" },
+              "y": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/locationInstance"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "locationInstance": {
+      "type": "object",
+      "required": ["id", "catalogRoomId", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "catalogRoomId": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "backgroundImage": { "type": ["string", "null"] },
+        "backgroundOverridden": { "type": "boolean" },
+        "designSize": {
+          "type": "object",
+          "properties": {
+            "w": { "type": "integer", "minimum": 1 },
+            "h": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["w", "h"],
+          "additionalProperties": false
+        },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "layers": { "type": "array", "items": { "type": "string" } },
+        "sockets": { "type": "array", "items": { "$ref": "#/$defs/socketDefinition" } },
+        "exits": { "type": "array", "items": { "$ref": "#/$defs/exitDefinition" } },
+        "placedEntities": { "type": "array", "items": { "$ref": "#/$defs/placedEntity" } }
+      },
+      "additionalProperties": false
+    },
+    "exitDefinition": {
+      "type": "object",
+      "required": ["id", "entityId", "targetLocationId", "socketId"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string" },
+        "targetLocationId": { "type": "string" },
+        "socketId": { "type": "string" },
+        "layer": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "locked": { "type": "boolean" },
+        "clickableRect": { "$ref": "#/$defs/rect" },
+        "conditions": { "$ref": "#/$defs/conditions" }
+      },
+      "additionalProperties": false
+    },
+    "placedEntity": {
+      "type": "object",
+      "required": ["instanceId", "entityId", "socketId"],
+      "properties": {
+        "instanceId": { "type": "string" },
+        "entityId": { "type": "string" },
+        "socketId": { "type": "string" },
+        "layer": { "type": ["string", "null"] },
+        "sortOrder": { "type": "integer" },
+        "savePolicy": { "type": "string", "enum": ["persistent", "transient", "regenerate_on_new_game"] },
+        "placementSource": {
+          "type": "string",
+          "enum": ["explicit", "ambient_fill", "manual", "runtime"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "socketDefinition": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "rotation": { "type": "number" },
+        "scale": { "type": "number" },
+        "pivotMode": { "type": "string", "enum": ["bottom", "center", "spawnable_default"] },
+        "layer": { "type": "string" },
+        "sortOrder": { "type": "integer" },
+        "requiredTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+        "ambientSpawnChance": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "ambientRule": { "$ref": "#/$defs/ambientRule" },
+        "allowedEntityIds": { "type": "array", "items": { "type": "string" } },
+        "editor": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "ambientRule": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "tag_query", "weighted_entity_list", "weighted_entries"] },
+        "requiredTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["entityId", "weight"],
+            "properties": {
+              "entityId": { "type": "string" },
+              "weight": { "type": "integer", "minimum": 1, "maximum": 100 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fillEntries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "weight"],
+            "properties": {
+              "type": { "type": "string", "enum": ["entity", "tag_query"] },
+              "entityId": { "type": "string" },
+              "requiredTags": { "type": "array", "items": { "type": "string" } },
+              "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+              "weight": { "type": "integer", "minimum": 1, "maximum": 100 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "w": { "type": "integer" },
+        "h": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "conditions": {
+      "type": "object",
+      "properties": {
+        "requiresTags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTags": { "type": "array", "items": { "type": "string" } },
+        "requiresFlags": { "type": "array", "items": { "type": "string" } },
+        "forbiddenFlags": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

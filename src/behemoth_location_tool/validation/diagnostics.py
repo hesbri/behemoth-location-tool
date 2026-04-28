@@ -13,6 +13,8 @@ class Diagnostic(BaseModel):
     message: str
     file: str | None = None
     object_id: str | None = None
+    object_type: str | None = None
+    source: str = "python"
 
 class DiagnosticReport(BaseModel):
     diagnostics: list[Diagnostic]

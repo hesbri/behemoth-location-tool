@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Behemoth Tags",
+  "description": "Canonical tag definitions.",
+  "type": "object",
+  "required": ["version", "tags"],
+  "properties": {
+    "version": { "const": 2 },
+    "tags": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        { "$ref": "#/$defs/tagTree" }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tagTree": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          { "$ref": "#/$defs/tagTree" }
+        ]
+      }
+    }
+  }
+}

@@ -1,5 +1,7 @@
 from __future__ import annotations
-import socketserver, threading
+
+import socketserver
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,11 +54,20 @@ class PreviewServerController:
     on_message: JsonHandler
     server: PreviewTcpServer | None = field(default=None, init=False)
     thread: threading.Thread | None = field(default=None, init=False)
+    _connected_callbacks: list[Callable[[], None]] = field(default_factory=list, init=False, repr=False)
+
+    def add_connected_callback(self, callback: Callable[[], None]) -> None:
+        if self.server is not None:
+            self.server.add_connected_callback(callback)
+        self._connected_callbacks.append(callback)
 
     def start(self) -> None:
         if self.server is not None:
             return
         self.server = PreviewTcpServer(self.host, self.port, self.on_message)
+        self.port = int(self.server.server_address[1])
+        for cb in self._connected_callbacks:
+            self.server.add_connected_callback(cb)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
