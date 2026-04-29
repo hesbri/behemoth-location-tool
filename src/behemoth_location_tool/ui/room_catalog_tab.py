@@ -73,6 +73,7 @@ class RoomCatalogTab(QWidget):
         self._undo_stack: QUndoStack | None = None
         self._updating_canvas = False  # guard for programmatic updates
         self._prev_row = -1
+        self._prev_socket_row = -1
         self._loading = False
         self._suppress_room_sync = False
         self._suppress_socket_sync = False
@@ -200,12 +201,10 @@ class RoomCatalogTab(QWidget):
         self._f_bg_warn = QLabel("")
         self._f_bg_warn.setStyleSheet("QLabel { color: #cc6600; font-size: 11px; }")
 
-        self._f_width = QSpinBox()
-        self._f_width.setRange(1, 9999)
-        self._f_width.setValue(1920)
-        self._f_height = QSpinBox()
-        self._f_height.setRange(1, 9999)
-        self._f_height.setValue(1080)
+        self._f_width = QLineEdit()
+        self._f_width.setPlaceholderText("1920")
+        self._f_height = QLineEdit()
+        self._f_height.setPlaceholderText("1080")
         self._f_id.textChanged.connect(self._update_list_item_text)
         self._f_name.textChanged.connect(self._update_list_item_text)
         self._f_bg.textChanged.connect(self._on_bg_text_changed)
@@ -265,6 +264,8 @@ class RoomCatalogTab(QWidget):
         self._sf_id = QLineEdit()
         self._sf_name = QLineEdit()
         self._sf_desc = QLineEdit()
+        self._sf_id.textChanged.connect(self._update_socket_list_item_text)
+        self._sf_name.textChanged.connect(self._update_socket_list_item_text)
         identity_form.addRow("Socket ID:", self._sf_id)
         identity_form.addRow("Name:", self._sf_name)
         identity_form.addRow("Description:", self._sf_desc)
@@ -478,14 +479,21 @@ class RoomCatalogTab(QWidget):
     def clear_undo_dirty(self) -> None:
         self._undo_dirty = False
 
-    def _refresh_socket_list(self, room: RoomCatalogEntry) -> None:
+    def _refresh_socket_list(self, room: RoomCatalogEntry, selected_row: int = 0) -> None:
         self._socket_list.blockSignals(True)
-        self._socket_list.clear()
-        for sock in room.sockets:
-            self._socket_list.addItem(f"{sock.id} ({sock.name})")
-        self._socket_list.blockSignals(False)
-        if room.sockets:
-            self._socket_list.setCurrentRow(0)
+        try:
+            self._socket_list.clear()
+            for sock in room.sockets:
+                self._socket_list.addItem(f"{sock.id} ({sock.name})")
+            if room.sockets:
+                selected_row = max(0, min(selected_row, len(room.sockets) - 1))
+                self._socket_list.setCurrentRow(selected_row)
+                self._prev_socket_row = selected_row
+            else:
+                self._socket_list.setCurrentRow(-1)
+                self._prev_socket_row = -1
+        finally:
+            self._socket_list.blockSignals(False)
 
     def _current_socket(self) -> tuple[RoomCatalogEntry, int] | None:
         room = self._current_room()
@@ -499,18 +507,21 @@ class RoomCatalogTab(QWidget):
     def _after_socket_command(self, room: RoomCatalogEntry, preferred_socket_id: str = "") -> None:
         self._mark_undo_dirty()
         self._suppress_socket_sync = True
-        self._refresh_socket_list(room)
-        if preferred_socket_id:
-            for idx, sock in enumerate(room.sockets):
-                if sock.id == preferred_socket_id:
-                    self._socket_list.setCurrentRow(idx)
-                    break
-        result = self._current_socket()
-        if result is not None:
-            self._load_socket_to_form(result[0].sockets[result[1]])
-        else:
-            self._clear_socket_form()
-        self._suppress_socket_sync = False
+        try:
+            selected_row = 0
+            if preferred_socket_id:
+                for idx, sock in enumerate(room.sockets):
+                    if sock.id == preferred_socket_id:
+                        selected_row = idx
+                        break
+            self._refresh_socket_list(room, selected_row)
+            selected_row = self._socket_list.currentRow()
+            if 0 <= selected_row < len(room.sockets):
+                self._load_socket_to_form(room.sockets[selected_row])
+            else:
+                self._clear_socket_form()
+        finally:
+            self._suppress_socket_sync = False
         self._refresh_canvas(room)
         self._write_preview_snapshot()
 
@@ -556,6 +567,14 @@ class RoomCatalogTab(QWidget):
     def _parse_csv(text: str) -> list[str]:
         return [t.strip() for t in text.split(",") if t.strip()]
 
+    @staticmethod
+    def _parse_dimension(text: str, fallback: int) -> int:
+        try:
+            value = int(text.strip())
+        except ValueError:
+            return fallback
+        return value if value > 0 else fallback
+
     def _update_list_item_text(self) -> None:
         """Live-update the selected list item text when ID or name fields change."""
         if self._loading:
@@ -572,12 +591,36 @@ class RoomCatalogTab(QWidget):
         if self._catalog_changed_callback is not None:
             self._catalog_changed_callback()
 
-    def _sync_form_to_catalog(self) -> None:
-        if self._prev_row < 0 or self._prev_row >= len(self._catalog.rooms):
+    def _update_socket_list_item_text(self) -> None:
+        """Live-update the selected socket list item text when ID or name fields change."""
+        if self._loading or self._suppress_socket_sync:
             return
-        room = self._catalog.rooms[self._prev_row]
+        row = self._socket_list.currentRow()
+        if row < 0:
+            return
+        room = self._current_room()
+        if room is None:
+            return
+        if row >= len(room.sockets):
+            return
+        new_id = self._sf_id.text().strip()
+        new_name = self._sf_name.text().strip()
+        text = f"{new_id} ({new_name})"
+        self._socket_list.item(row).setText(text)
+        self._dirty = True
+
+    def _sync_form_to_catalog(self, row: int | None = None, socket_row: int | None = None) -> None:
+        if self._loading or self._suppress_room_sync:
+            return
+        if row is None:
+            row = self._prev_row if self._prev_row >= 0 else self._list.currentRow()
+        if row < 0 or row >= len(self._catalog.rooms):
+            return
+        room = self._catalog.rooms[row]
         # Socket edits are handled separately and may push their own command.
-        self._sync_socket_form()
+        if socket_row is None:
+            socket_row = self._prev_socket_row
+        self._sync_socket_form(room, socket_row)
 
         before = room.model_copy(deep=True)
         after = before.model_copy(deep=True)
@@ -585,8 +628,8 @@ class RoomCatalogTab(QWidget):
         after.name = self._f_name.text().strip()
         after.description = self._f_desc.toPlainText().strip()
         after.background_image = self._f_bg.text().strip() or None
-        after.design_size.w = self._f_width.value()
-        after.design_size.h = self._f_height.value()
+        after.design_size.w = self._parse_dimension(self._f_width.text(), 1920)
+        after.design_size.h = self._parse_dimension(self._f_height.text(), 1080)
         after.tags = self._parse_csv(self._f_tags.text())
         after.layers = LayerConfig(
             mode=self._f_layer_mode.currentText(),
@@ -600,7 +643,7 @@ class RoomCatalogTab(QWidget):
             self._undo_stack.push(
                 EditRoomCommand(
                     catalog=self._catalog,
-                    index=self._prev_row,
+                    index=row,
                     before=before,
                     after=after,
                     on_changed=(lambda: self._after_room_command(after.id)),
@@ -608,19 +651,27 @@ class RoomCatalogTab(QWidget):
             )
             return
 
-        self._catalog.rooms[self._prev_row] = after
+        self._catalog.rooms[row] = after
         room = after
 
-        self._list.item(self._prev_row).setText(f"{room.id} — {room.name}")
+        self._list.item(row).setText(f"{room.id} — {room.name}")
         self._dirty = True
 
-    def _sync_socket_form(self) -> None:
+    def _sync_socket_form(
+        self,
+        room: RoomCatalogEntry | None = None,
+        idx: int | None = None,
+        preferred_socket_id: str | None = None,
+    ) -> None:
         if self._loading or self._suppress_socket_sync:
             return
-        result = self._current_socket()
-        if result is None:
+        if room is None or idx is None:
+            result = self._current_socket()
+            if result is None:
+                return
+            room, idx = result
+        if idx < 0 or idx >= len(room.sockets):
             return
-        room, idx = result
         before = room.sockets[idx].model_copy(deep=True)
         after = before.model_copy(deep=True)
         after.id = self._sf_id.text().strip()
@@ -651,18 +702,21 @@ class RoomCatalogTab(QWidget):
         if not socket_changed(before, after):
             return
         if self._undo_stack is not None:
+            preferred_id = preferred_socket_id or after.id
             self._undo_stack.push(
                 EditSocketCommand(
                     room=room,
                     index=idx,
                     before=before,
                     after=after,
-                    on_changed=(lambda: self._after_socket_command(room, after.id)),
+                    on_changed=(lambda: self._after_socket_command(room, preferred_id)),
                 )
             )
             return
         room.sockets[idx] = after
-        self._socket_list.item(idx).setText(f"{after.id} ({after.name})")
+        item = self._socket_list.item(idx)
+        if item is not None:
+            item.setText(f"{after.id} ({after.name})")
         self._dirty = True
 
     def _sync_weighted_entity_table_to_model(self, sock: SocketDefinition) -> None:
@@ -719,8 +773,8 @@ class RoomCatalogTab(QWidget):
             self._f_bg_thumb.setText("No image")
             self._f_bg_thumb.setPixmap(QPixmap())
             self._f_bg_warn.setText("")
-            self._f_width.setValue(1920)
-            self._f_height.setValue(1080)
+            self._f_width.setText("1920")
+            self._f_height.setText("1080")
             self._f_tags.setText("")
             self._f_layer_mode.setCurrentIndex(0)
             self._f_layer_order.setText("")
@@ -765,8 +819,8 @@ class RoomCatalogTab(QWidget):
             self._f_name.setText(room.name)
             self._f_desc.setPlainText(room.description)
             self._f_bg.setText(room.background_image or "")
-            self._f_width.setValue(room.design_size.w)
-            self._f_height.setValue(room.design_size.h)
+            self._f_width.setText(str(room.design_size.w))
+            self._f_height.setText(str(room.design_size.h))
             self._f_tags.setText(", ".join(room.tags))
 
             idx = self._f_layer_mode.findText(room.layers.mode)
@@ -776,6 +830,15 @@ class RoomCatalogTab(QWidget):
             self._f_layer_overrides.setText(", ".join(room.layers.overrides))
 
             self._refresh_socket_list(room)
+            if room.sockets:
+                selected_socket_row = self._socket_list.currentRow()
+                if selected_socket_row < 0:
+                    selected_socket_row = 0
+                self._prev_socket_row = selected_socket_row
+                self._load_socket_to_form(room.sockets[selected_socket_row])
+            else:
+                self._prev_socket_row = -1
+                self._clear_socket_form()
             self._refresh_canvas(room)
             self._refresh_bg_thumbnail()
         finally:
@@ -958,7 +1021,7 @@ class RoomCatalogTab(QWidget):
         if self._suppress_room_sync:
             self._prev_row = row
             return
-        self._sync_form_to_catalog()
+        self._sync_form_to_catalog(self._prev_row, self._prev_socket_row)
         self._prev_row = row
         if 0 <= row < len(self._catalog.rooms):
             self._load_room_to_form(self._catalog.rooms[row])
@@ -967,15 +1030,17 @@ class RoomCatalogTab(QWidget):
             self._set_form_enabled(False)
 
     def _on_socket_selection_changed(self, row: int) -> None:
-        if self._suppress_socket_sync:
-            room = self._current_room()
-            if room and 0 <= row < len(room.sockets):
-                self._load_socket_to_form(room.sockets[row])
+        if self._loading or self._suppress_socket_sync:
             return
-        self._sync_socket_form()
         room = self._current_room()
+        if room is not None:
+            preferred_socket_id = room.sockets[row].id if 0 <= row < len(room.sockets) else ""
+            self._sync_socket_form(room, self._prev_socket_row, preferred_socket_id)
+        self._prev_socket_row = row
         if room and 0 <= row < len(room.sockets):
             self._load_socket_to_form(room.sockets[row])
+        else:
+            self._clear_socket_form()
 
     def _on_add(self) -> None:
         existing = {r.id for r in self._catalog.rooms}
@@ -1037,7 +1102,7 @@ class RoomCatalogTab(QWidget):
         if room is None:
             return
         # Sync current socket before adding a new one
-        self._sync_socket_form()
+        self._sync_socket_form(room, self._prev_socket_row)
 
         existing = {s.id for s in room.sockets}
         new_id = generate_padded_id("new_socket", existing, fallback="socket")
@@ -1055,20 +1120,16 @@ class RoomCatalogTab(QWidget):
             return
         room.sockets.append(sock)
 
-        # Block signals so _on_socket_selection_changed doesn't overwrite
-        # the new socket's ID/name with stale form data
-        self._socket_list.blockSignals(True)
-        self._socket_list.addItem(f"{sock.id} ({sock.name})")
-        self._socket_list.setCurrentRow(len(room.sockets) - 1)
-        self._socket_list.blockSignals(False)
+        self._suppress_socket_sync = True
+        try:
+            self._refresh_socket_list(room, len(room.sockets) - 1)
+            self._load_socket_to_form(sock)
+        finally:
+            self._suppress_socket_sync = False
 
-        # Manually load the new socket into the form
-        self._load_socket_to_form(sock)
-
-        # Add handle to canvas
-        scene = self._canvas.room_scene
-        handle = scene.add_socket(sock.id, float(sock.x), float(sock.y))
-        handle.set_label_visible(self._show_labels_cb.isChecked())
+        # Update canvas and write preview
+        self._refresh_canvas(room)
+        self._write_preview_snapshot()
         self._dirty = True
 
     def _on_delete_socket(self) -> None:
@@ -1094,8 +1155,11 @@ class RoomCatalogTab(QWidget):
         handle = scene.find_handle(sock_id)
         if handle:
             scene.removeItem(handle)
-        self._refresh_socket_list(room)
-        if not room.sockets:
+        selected_row = min(idx, len(room.sockets) - 1)
+        self._refresh_socket_list(room, selected_row)
+        if room.sockets and 0 <= selected_row < len(room.sockets):
+            self._load_socket_to_form(room.sockets[selected_row])
+        else:
             self._clear_socket_form()
         self._dirty = True
 
@@ -1158,7 +1222,9 @@ class RoomCatalogTab(QWidget):
         bg_text = self._f_bg.text().strip()
         if bg_text:
             bg_path = self._project.image_root / bg_text
-        scene.set_background(bg_path, self._f_width.value(), self._f_height.value())
+        w = self._parse_dimension(self._f_width.text(), 1920)
+        h = self._parse_dimension(self._f_height.text(), 1080)
+        scene.set_background(bg_path, w, h)
         self._canvas.fit_to_view()
         self._refresh_bg_thumbnail()
         self._dirty = True

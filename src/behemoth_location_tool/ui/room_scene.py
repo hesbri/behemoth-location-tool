@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QPointF, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
@@ -15,20 +15,23 @@ from PySide6.QtWidgets import (
 
 
 class SocketHandle(QGraphicsEllipseItem):
-    """Draggable socket handle on the room canvas."""
+    """Draggable socket handle on room canvas."""
 
     def __init__(self, socket_id: str, x: float, y: float, radius: float = 10) -> None:
         super().__init__(-radius, -radius, radius * 2, radius * 2)
         self.socket_id = socket_id
         self._radius = radius
         self.setPos(x, y)
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setZValue(10)
         self.setBrush(QBrush(QColor(255, 165, 0, 200)))
         self.setPen(QPen(QColor(255, 255, 255), 2))
         self._label: QGraphicsTextItem | None = None
+        self._dragging = False
+        self._drag_start_scene_pos: QPointF | None = None
+        self._drag_start_item_pos: QPointF | None = None
 
     def set_label_visible(self, visible: bool) -> None:
         if visible and self._label is None:
@@ -44,6 +47,39 @@ class SocketHandle(QGraphicsEllipseItem):
     def _update_label_pos(self) -> None:
         if self._label:
             self._label.setPos(-self._label.boundingRect().width() / 2, -self._radius - 18)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        """Start dragging the socket handle."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self._drag_start_scene_pos = event.scenePos()
+            self._drag_start_item_pos = self.pos()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        """Handle socket dragging manually."""
+        if (
+            self._dragging
+            and self._drag_start_scene_pos is not None
+            and self._drag_start_item_pos is not None
+        ):
+            delta = event.scenePos() - self._drag_start_scene_pos
+            self.setPos(self._drag_start_item_pos + delta)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        """Stop dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            self._drag_start_scene_pos = None
+            self._drag_start_item_pos = None
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value) -> object:  # type: ignore[no-untyped-def]
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
