@@ -9,7 +9,8 @@ from typing import Any
 
 
 def read_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as f:
+    """Read JSON, accepting UTF-8 files with or without BOM."""
+    with Path(path).open("r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 

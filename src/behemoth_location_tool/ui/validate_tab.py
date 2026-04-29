@@ -24,10 +24,12 @@ from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.validation.diagnostics import Diagnostic, DiagnosticReport, Severity
 from behemoth_location_tool.validation.validation_service import validate_project
 
-_SEV_COLOR = {
-    "error":   QColor(255, 235, 238),   # pale red
-    "warning": QColor(255, 248, 225),   # pale amber
-    "info":    QColor(255, 255, 255),   # white
+_ROW_BG = QColor(66, 66, 66)
+_TEXT_WHITE = QColor(255, 255, 255)
+_SEV_TEXT_COLOR = {
+    "error": QColor(220, 70, 70),
+    "warning": QColor(245, 170, 60),
+    "info": _TEXT_WHITE,
 }
 _SEV_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -110,13 +112,16 @@ class ValidateTab(QWidget):
             "Severity", "Code", "Message", "Object Type", "Object ID", "File", "Source",
         ])
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        # Allow manual column resizing (especially Message) for long diagnostics.
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        self._table.setColumnWidth(0, 110)
+        self._table.setColumnWidth(1, 190)
+        self._table.setColumnWidth(2, 520)
+        self._table.setColumnWidth(3, 140)
+        self._table.setColumnWidth(4, 130)
+        self._table.setColumnWidth(5, 480)
+        self._table.setColumnWidth(6, 110)
 
         self._table.setSortingEnabled(True)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -218,11 +223,15 @@ class ValidateTab(QWidget):
 
             r = self._table.rowCount()
             self._table.insertRow(r)
-            bg = _SEV_COLOR.get(sev, QColor(255, 255, 255))
             for col, value in enumerate(row_values):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setBackground(bg)
+                item.setBackground(_ROW_BG)
+                # Keep all text white for readability except severity label itself.
+                if col == 0:
+                    item.setForeground(_SEV_TEXT_COLOR.get(sev, _TEXT_WHITE))
+                else:
+                    item.setForeground(_TEXT_WHITE)
                 self._table.setItem(r, col, item)
 
         self._table.setSortingEnabled(True)
