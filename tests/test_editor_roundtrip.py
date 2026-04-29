@@ -1,16 +1,21 @@
 """Roundtrip tests: build model → save JSON → reload → compare."""
 from pathlib import Path
+
 from behemoth_location_tool.io.entity_loader import load_entity_module, save_entity_module
 from behemoth_location_tool.io.room_catalog_loader import load_room_catalog, save_room_catalog
-from behemoth_location_tool.model.common import PivotMode, Rect, SavePolicy, DesignSize
+from behemoth_location_tool.model.common import DesignSize, PivotMode, Rect, SavePolicy
 from behemoth_location_tool.model.entity import (
-    EntityDefinition, EntityModule, EntityRenderData, EntitySpawnRules,
+    EntityDefinition,
+    EntityModule,
+    EntityRenderData,
+    EntitySpawnRules,
 )
 from behemoth_location_tool.model.room import (
-    AmbientRule, LayerConfig, RoomCatalog, RoomCatalogEntry,
-    SocketDefinition, WeightedEntityEntry,
+    LayerConfig,
+    RoomCatalog,
+    RoomCatalogEntry,
+    SocketDefinition,
 )
-
 
 # ── Entity roundtrip ──────────────────────────────────────────────────────────
 

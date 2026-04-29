@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.preview.protocol import (
@@ -16,6 +17,10 @@ from behemoth_location_tool.preview.protocol import (
 )
 from behemoth_location_tool.preview.server import PreviewServerController
 from behemoth_location_tool.preview.snapshot import build_empty_preview_snapshot, write_preview_snapshot
+from behemoth_location_tool.validation.runtime_validator import (
+    diagnostics_to_runtime_entries,
+    parse_runtime_validation_result,
+)
 
 
 class ConnectionState:
@@ -159,10 +164,7 @@ class PreviewController:
                 game_root = Path(self.project.game_root).resolve()
 
                 game_exe = Path(self.project.game_executable)
-                if game_exe.is_absolute():
-                    game_exe = game_exe.resolve()
-                else:
-                    game_exe = (game_root / game_exe).resolve()
+                game_exe = game_exe.resolve() if game_exe.is_absolute() else (game_root / game_exe).resolve()
 
                 content_root = Path(self.project.content_root)
                 if content_root.is_absolute():
@@ -177,7 +179,10 @@ class PreviewController:
                     return
 
                 if not settings_file.exists():
-                    self.on_diagnostic("error", f"settings.json not found at expected mount path: {settings_file}")
+                    self.on_diagnostic(
+                        "error",
+                        f"settings.json not found at expected mount path: {settings_file}",
+                    )
                     return
 
                 cmd = [
@@ -194,7 +199,17 @@ class PreviewController:
                     str(mount_root),
                 ]
                 self.on_diagnostic("info", f"Launching: {' '.join(cmd)}")
-                self._game_process = subprocess.Popen(cmd, cwd=str(game_root))
+                self._game_process = subprocess.Popen(
+                    cmd,
+                    cwd=str(game_root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    bufsize=1,
+                )
+                self._forward_process_streams(self._game_process)
                 self._game_process.wait()
                 self.on_diagnostic("info", "Game process exited")
             except FileNotFoundError as exc:
@@ -205,6 +220,27 @@ class PreviewController:
                 self._game_process = None
 
         thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+    def _forward_process_streams(self, process: subprocess.Popen) -> None:
+        self._start_stream_reader(process.stdout, level="info", label="stdout")
+        self._start_stream_reader(process.stderr, level="warn", label="stderr")
+
+    def _start_stream_reader(self, stream: TextIO | None, *, level: str, label: str) -> None:
+        if stream is None:
+            return
+
+        def _reader() -> None:
+            try:
+                for line in iter(stream.readline, ""):
+                    text = line.rstrip("\r\n")
+                    if text:
+                        self.on_diagnostic(level, f"[game:{label}] {text}")
+            finally:
+                with contextlib.suppress(Exception):
+                    stream.close()
+
+        thread = threading.Thread(target=_reader, daemon=True)
         thread.start()
 
     @property
@@ -220,10 +256,8 @@ class PreviewController:
                 self._game_process.terminate()
                 self._game_process.wait(timeout=5)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     self._game_process.kill()
-                except Exception:
-                    pass
             self._game_process = None
 
     def _on_client_connected(self) -> None:
@@ -261,27 +295,10 @@ class PreviewController:
         elif msg_type == "error":
             self.on_diagnostic("error", message.get("message", "Unknown error from client"))
         elif msg_type == "runtime_validation_result":
-            runtime_diagnostics: list[dict[str, str]] = []
-
-            def _append_entries(entries: Any, severity: str) -> None:
-                if not isinstance(entries, list):
-                    return
-                for entry in entries:
-                    if isinstance(entry, dict):
-                        code = str(entry.get("code", "runtime_validation"))
-                        text = str(entry.get("message", ""))
-                    else:
-                        code = "runtime_validation"
-                        text = str(entry)
-                    runtime_diagnostics.append(
-                        {"severity": severity, "code": code, "message": text}
-                    )
-                    self.on_diagnostic(severity, f"[{code}] {text}")
-
-            _append_entries(message.get("errors", []), "error")
-            _append_entries(message.get("warnings", []), "warning")
-            _append_entries(message.get("infos", []), "info")
-            self.on_runtime_validation_result(runtime_diagnostics)
+            runtime_diagnostics = parse_runtime_validation_result(message)
+            for diag in runtime_diagnostics:
+                self.on_diagnostic(diag.severity.value, f"[{diag.code}] {diag.message}")
+            self.on_runtime_validation_result(diagnostics_to_runtime_entries(runtime_diagnostics))
 
     def _send_message(self, msg: PreviewMessage) -> None:
         """Send a PreviewMessage, logging it."""

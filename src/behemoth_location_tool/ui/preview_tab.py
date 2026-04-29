@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, Signal, Slot
+from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QCheckBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from behemoth_location_tool.model.project import ProjectConfig
@@ -31,9 +39,18 @@ class PreviewTab(QWidget):
         self._controller.on_diagnostic = self._bridge.diagnostic_message.emit
 
         # Wire bridge signals → UI slots (queued for thread safety)
-        self._bridge.connection_changed.connect(self._on_connection_changed, Qt.ConnectionType.QueuedConnection)
-        self._bridge.log_message.connect(self._on_log_message, Qt.ConnectionType.QueuedConnection)
-        self._bridge.diagnostic_message.connect(self._on_diagnostic_message, Qt.ConnectionType.QueuedConnection)
+        self._bridge.connection_changed.connect(
+            self._on_connection_changed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._bridge.log_message.connect(
+            self._on_log_message,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._bridge.diagnostic_message.connect(
+            self._on_diagnostic_message,
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         self._build_ui()
 

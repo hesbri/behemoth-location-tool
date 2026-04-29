@@ -1,15 +1,20 @@
 """Tests for Stage 5A: locations, factory, exits, graph, validation, preview snapshot."""
 from pathlib import Path
 
+from behemoth_location_tool.io.json_io import read_json
 from behemoth_location_tool.io.location_factory import (
     DEFAULT_BACK_EXIT_ENTITY_ID,
     add_graph_node_for_location,
     create_location_from_room,
 )
-from behemoth_location_tool.io.json_io import read_json
 from behemoth_location_tool.model.common import Conditions, DesignSize, Rect
 from behemoth_location_tool.model.location import (
-    ExitDefinition, GraphNode, LocationGraph, LocationInstance, LocationsFile, PlacedEntity,
+    ExitDefinition,
+    GraphNode,
+    LocationGraph,
+    LocationInstance,
+    LocationsFile,
+    PlacedEntity,
 )
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.model.room import LayerConfig, RoomCatalogEntry, SocketDefinition
@@ -119,13 +124,19 @@ class TestCreateLocationFromRoom:
         hall_room = RoomCatalogEntry(
             id="hall",
             name="Hall",
-            layers=LayerConfig(mode="custom", order=["background", "exit_behind", "exit_front", "characters"]),
+            layers=LayerConfig(
+                mode="custom",
+                order=["background", "exit_behind", "exit_front", "characters"],
+            ),
             sockets=[SocketDefinition(id="sock_hall", name="Hall Exit", x=400, y=900, layer="exit_front")],
         )
         library_room = RoomCatalogEntry(
             id="library",
             name="Library",
-            layers=LayerConfig(mode="custom", order=["background", "exit_behind", "exit_front", "characters"]),
+            layers=LayerConfig(
+                mode="custom",
+                order=["background", "exit_behind", "exit_front", "characters"],
+            ),
             sockets=[SocketDefinition(id="sock_lib", name="Library Exit", x=1200, y=900, layer="exit_front")],
         )
         catalog = RoomCatalog(rooms=[hall_room, library_room])
@@ -289,9 +300,21 @@ class TestLocationValidation:
             start_location="loc_1",
             locations=[
                 LocationInstance(id="loc_1", catalog_room_id="r1", name="Loc 1",
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="loc_2", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="loc_2",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
                 LocationInstance(id="loc_1", catalog_room_id="r2", name="Loc 1 Dup",
-                                 exits=[ExitDefinition(id="ex2", entity_id="", target_location_id="loc_1", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex2",
+                                     entity_id="",
+                                     target_location_id="loc_1",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         report = validate_locations(lf)
@@ -328,7 +351,13 @@ class TestLocationValidation:
             start_location="hall",
             locations=[
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="nonexistent", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="nonexistent",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         report = validate_locations(lf)
@@ -340,7 +369,13 @@ class TestLocationValidation:
             locations=[
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
                                  sockets=[SocketDefinition(id="sock_1", name="S1")],
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="hall", socket_id="nonexistent_sock", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="hall",
+                                     socket_id="nonexistent_sock",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         report = validate_locations(lf)
@@ -351,18 +386,44 @@ class TestLocationValidation:
             start_location="hall",
             locations=[
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="kitchen", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="kitchen",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
                 LocationInstance(id="kitchen", catalog_room_id="r2", name="Kitchen",
-                                 exits=[ExitDefinition(id="ex2", entity_id="", target_location_id="hall", socket_id="", tags=["exit.default_back"]),
-                                        ExitDefinition(id="ex3", entity_id="", target_location_id="pantry", socket_id="")]),
+                                 exits=[ExitDefinition(
+                                     id="ex2",
+                                     entity_id="",
+                                     target_location_id="hall",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 ), ExitDefinition(
+                                     id="ex3",
+                                     entity_id="",
+                                     target_location_id="pantry",
+                                     socket_id="",
+                                 )]),
                 LocationInstance(id="pantry", catalog_room_id="r3", name="Pantry",
-                                 exits=[ExitDefinition(id="ex4", entity_id="", target_location_id="kitchen", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex4",
+                                     entity_id="",
+                                     target_location_id="kitchen",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         # pantry links to hall (not kitchen), so kitchen→pantry lacks reciprocal
-        lf.locations[2].exits = [
-            ExitDefinition(id="ex5", entity_id="", target_location_id="hall", socket_id="", tags=["exit.default_back"]),
-        ]
+        lf.locations[2].exits = [ExitDefinition(
+            id="ex5",
+            entity_id="",
+            target_location_id="hall",
+            socket_id="",
+            tags=["exit.default_back"],
+        )]
         report = validate_locations(lf)
         assert any(d.code == "missing_reciprocal_exit" for d in report.diagnostics)
 
@@ -373,7 +434,13 @@ class TestLocationValidation:
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
                                  exits=[]),
                 LocationInstance(id="island", catalog_room_id="r2", name="Island",
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="island", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="island",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         report = validate_locations(lf)
@@ -396,7 +463,14 @@ class TestLocationValidation:
             start_location="hall",
             locations=[
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
-                                 exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="hall", socket_id="", layer="nonexistent_layer", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="",
+                                     target_location_id="hall",
+                                     socket_id="",
+                                     layer="nonexistent_layer",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         report = validate_locations(lf)
@@ -413,7 +487,13 @@ class TestLocationValidation:
             start_location="hall",
             locations=[
                 LocationInstance(id="hall", catalog_room_id="r1", name="Hall",
-                                 exits=[ExitDefinition(id="ex1", entity_id="ghost_entity", target_location_id="hall", socket_id="", tags=["exit.default_back"])]),
+                                 exits=[ExitDefinition(
+                                     id="ex1",
+                                     entity_id="ghost_entity",
+                                     target_location_id="hall",
+                                     socket_id="",
+                                     tags=["exit.default_back"],
+                                 )]),
             ],
         )
         entities = [EntityDefinition(id="skeleton", kind="item", name="Skeleton")]
@@ -460,7 +540,13 @@ class TestLocationSnapshot:
         loc = LocationInstance(
             id="hall", catalog_room_id="room_1", name="Hall",
             placed_entities=[
-                PlacedEntity(instanceId="pe_1", entityId="ghost", socketId="sock_1", layer="characters", sortOrder=5),
+                PlacedEntity(
+                    instanceId="pe_1",
+                    entityId="ghost",
+                    socketId="sock_1",
+                    layer="characters",
+                    sortOrder=5,
+                ),
             ],
         )
         snap = build_location_snapshot(project, loc)
@@ -487,7 +573,13 @@ class TestLocationSnapshot:
         loc = LocationInstance(
             id="hall", catalog_room_id="room_1", name="Hall",
             background_image="rooms/hall.png",
-            exits=[ExitDefinition(id="ex1", entity_id="", target_location_id="hall", socket_id="", tags=["exit.default_back"])],
+            exits=[ExitDefinition(
+                id="ex1",
+                entity_id="",
+                target_location_id="hall",
+                socket_id="",
+                tags=["exit.default_back"],
+            )],
         )
         snap = build_location_snapshot(project, loc)
         path = tmp_path / "loc_snap.json"

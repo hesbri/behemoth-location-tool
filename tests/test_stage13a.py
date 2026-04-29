@@ -3,11 +3,13 @@ inheritance, validate tab UX, atomic writes."""
 from __future__ import annotations
 
 import json
-import os
-import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from behemoth_location_tool.model.room import RoomCatalog
 
 FIXTURES = Path(__file__).parent / "fixtures" / "mansion_v2"
 
@@ -190,7 +192,11 @@ class TestScopedIdGeneration:
 
     def test_socket_ids_scoped_per_room(self) -> None:
         """socket IDs 'prop_01' in two different rooms must not conflict."""
-        from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry, SocketDefinition, DesignSize
+        from behemoth_location_tool.model.room import (
+            RoomCatalog,
+            RoomCatalogEntry,
+            SocketDefinition,
+        )
         sock = SocketDefinition(id="prop_01", name="Prop 1")
         room_a = RoomCatalogEntry(id="room_a", name="Room A", sockets=[sock])
         room_b = RoomCatalogEntry(id="room_b", name="Room B", sockets=[sock])
@@ -224,7 +230,9 @@ class TestScopedIdGeneration:
 
     def test_duplicate_exit_ids_within_location_is_error(self) -> None:
         from behemoth_location_tool.model.location import (
-            ExitDefinition, LocationInstance, LocationsFile,
+            ExitDefinition,
+            LocationInstance,
+            LocationsFile,
         )
         ex = ExitDefinition(id="ex1", entity_id="e1", target_location_id="b", socket_id="s1")
         loc_a = LocationInstance(id="a", catalog_room_id="", name="A", exits=[ex, ex])
@@ -240,7 +248,9 @@ class TestScopedIdGeneration:
 
     def test_same_exit_ids_in_different_locations_ok(self) -> None:
         from behemoth_location_tool.model.location import (
-            ExitDefinition, LocationInstance, LocationsFile,
+            ExitDefinition,
+            LocationInstance,
+            LocationsFile,
         )
         ex_a_to_b = ExitDefinition(id="exit_01", entity_id="e1",
                                     target_location_id="b", socket_id="s1")
@@ -261,9 +271,12 @@ class TestScopedIdGeneration:
 # ===========================================================================
 
 class TestInheritanceRegressions:
-    def _make_catalog(self, bg: str = "bg.png") -> "RoomCatalog":
+    def _make_catalog(self, bg: str = "bg.png") -> RoomCatalog:
         from behemoth_location_tool.model.room import (
-            RoomCatalog, RoomCatalogEntry, SocketDefinition, DesignSize,
+            DesignSize,
+            RoomCatalog,
+            RoomCatalogEntry,
+            SocketDefinition,
         )
         sock = SocketDefinition(id="s1", name="Slot 1")
         room = RoomCatalogEntry(
@@ -331,7 +344,9 @@ class TestInheritanceRegressions:
     def test_validation_uses_effective_sockets(self) -> None:
         """Exit referencing catalog socket must pass when location inherits."""
         from behemoth_location_tool.model.location import (
-            ExitDefinition, LocationInstance, LocationsFile,
+            ExitDefinition,
+            LocationInstance,
+            LocationsFile,
         )
         from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry, SocketDefinition
         sock = SocketDefinition(id="exit_sock", name="Exit")
@@ -355,7 +370,6 @@ class TestInheritanceRegressions:
         from behemoth_location_tool.model.common import DesignSize
         from behemoth_location_tool.model.location import LocationInstance
         from behemoth_location_tool.model.project import ProjectConfig
-        from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry, SocketDefinition
         from behemoth_location_tool.preview.snapshot import build_location_snapshot
 
         catalog = self._make_catalog("rooms/inherited_bg.png")

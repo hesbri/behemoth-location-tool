@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.preview.controller import ConnectionState, PreviewController
+
 
 def load_project_config(path: Path) -> ProjectConfig:
     # Adjust this if GLM created a dedicated project loader.
@@ -52,10 +52,11 @@ def main() -> int:
     })
     
     game_exe = Path(project.game_executable)
-    if game_exe.is_absolute():
-        game_exe = game_exe.resolve()
-    else:
-        game_exe = (game_root / game_exe).resolve()
+    game_exe = (
+        game_exe.resolve()
+        if game_exe.is_absolute()
+        else (game_root / game_exe).resolve()
+    )
 
     if not game_exe.exists():
         print(f"[FAIL] Game executable not found: {game_exe}")

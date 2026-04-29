@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from behemoth_location_tool.io.project import load_project_or_default
 from behemoth_location_tool.ui.main_window import MainWindow
 
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Behemoth Location Tool")
     parser.add_argument("--project", type=Path, default=None, help="Path to a project.json file")

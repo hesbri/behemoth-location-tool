@@ -1,11 +1,7 @@
 """Stage 12A: end-to-end mansion tests, bug fixes, and preview wiring checks."""
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
-
-import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "mansion_v2"
 
@@ -60,7 +56,6 @@ class TestMansionFixtureValidation:
     def test_validate_project_three_rooms_reachable(self) -> None:
         """BFS reachability must include all 3 locations."""
         from behemoth_location_tool.io.locations_loader import load_locations
-        from behemoth_location_tool.model.location import LocationsFile
         from behemoth_location_tool.validation.validator import validate_locations
         lf = load_locations(FIXTURES / "locations.json")
         report = validate_locations(lf)
@@ -108,12 +103,13 @@ class TestSnapshotSpriteFix:
         assert ent.render.sprite == "props/table.png"
 
     def test_build_location_snapshot_includes_entity_sprite(self) -> None:
+        from behemoth_location_tool.model.common import DesignSize
         from behemoth_location_tool.model.entity import EntityDefinition, EntityRenderData
         from behemoth_location_tool.model.location import (
-            ExitDefinition, LocationInstance, PlacedEntity,
+            LocationInstance,
+            PlacedEntity,
         )
         from behemoth_location_tool.model.project import ProjectConfig
-        from behemoth_location_tool.model.common import DesignSize
         from behemoth_location_tool.preview.snapshot import build_location_snapshot
 
         project = ProjectConfig()
@@ -210,8 +206,8 @@ class TestFixtureSaveReload:
         save_locations(out, original)
         reloaded = load_locations(out)
 
-        orig_ids = {l.id for l in original.locations}
-        reload_ids = {l.id for l in reloaded.locations}
+        orig_ids = {location.id for location in original.locations}
+        reload_ids = {location.id for location in reloaded.locations}
         assert orig_ids == reload_ids
         assert reloaded.start_location == original.start_location
 

@@ -70,10 +70,7 @@ def create_location_from_room(
     socket_overridden = False
 
     # Resolve layers
-    if room.layers.mode == "custom" and room.layers.order:
-        layers = list(room.layers.order)
-    else:
-        layers = []
+    layers = list(room.layers.order) if room.layers.mode == "custom" and room.layers.order else []
 
     exits: list[ExitDefinition] = []
 

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QGraphicsItem, QGraphicsEllipseItem, QGraphicsRectItem, QGraphicsScene,
-    QGraphicsTextItem, QGraphicsView,
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
 )
 
 

@@ -1,9 +1,16 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any
+
 from behemoth_location_tool.io.json_io import write_json
 from behemoth_location_tool.model.entity import EntityDefinition
-from behemoth_location_tool.model.location import LocationInstance, get_effective_background, get_effective_layers, get_effective_sockets
+from behemoth_location_tool.model.location import (
+    LocationInstance,
+    get_effective_background,
+    get_effective_layers,
+    get_effective_sockets,
+)
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry
 
@@ -19,7 +26,12 @@ def build_empty_preview_snapshot(project: ProjectConfig) -> dict[str, Any]:
         "activeLocationId": "",
         "entities": [],
         "locations": [],
-        "debug": {"showSockets": True, "showClickableRects": True, "showSafeArea": False, "showLayerNames": False},
+        "debug": {
+            "showSockets": True,
+            "showClickableRects": True,
+            "showSafeArea": False,
+            "showLayerNames": False,
+        },
     }
 
 
@@ -91,7 +103,12 @@ def build_room_catalog_snapshot(
         "activeLocationId": snapshot_id,
         "entities": [],
         "locations": [location],
-        "debug": {"showSockets": True, "showClickableRects": True, "showSafeArea": False, "showLayerNames": False},
+        "debug": {
+            "showSockets": True,
+            "showClickableRects": True,
+            "showSafeArea": False,
+            "showLayerNames": False,
+        },
     }
 
 
@@ -231,7 +248,12 @@ def build_location_snapshot(
         "activeLocationId": location.id,
         "entities": entity_list,
         "locations": [loc_data],
-        "debug": {"showSockets": True, "showClickableRects": True, "showSafeArea": False, "showLayerNames": False},
+        "debug": {
+            "showSockets": True,
+            "showClickableRects": True,
+            "showSafeArea": False,
+            "showLayerNames": False,
+        },
     }
 
 

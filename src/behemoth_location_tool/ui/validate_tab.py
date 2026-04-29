@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.validation.diagnostics import Diagnostic, DiagnosticReport, Severity
-from behemoth_location_tool.validation.validator import validate_project
+from behemoth_location_tool.validation.validation_service import validate_project
 
 _SEV_COLOR = {
     "error":   QColor(255, 235, 238),   # pale red
@@ -47,7 +47,7 @@ class ValidateTab(QWidget):
         super().__init__()
         self.project = project
         self._diagnostics: list[Diagnostic] = []
-        self._runtime_validate_callback: Callable[[], None] | None = None
+        self._runtime_validate_callback: Callable[[], list[Diagnostic]] | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -56,9 +56,17 @@ class ValidateTab(QWidget):
         # ---- toolbar ----
         toolbar = QHBoxLayout()
 
-        self._run_button = QPushButton("Run Validation")
-        self._run_button.clicked.connect(self.run_validation)
-        toolbar.addWidget(self._run_button)
+        self._validate_all_button = QPushButton("Validate All")
+        self._validate_all_button.clicked.connect(self.run_validation)
+        toolbar.addWidget(self._validate_all_button)
+
+        self._validate_python_button = QPushButton("Validate Python Only")
+        self._validate_python_button.clicked.connect(self.run_python_validation)
+        toolbar.addWidget(self._validate_python_button)
+
+        self._validate_runtime_button = QPushButton("Validate Runtime")
+        self._validate_runtime_button.clicked.connect(self.run_runtime_validation)
+        toolbar.addWidget(self._validate_runtime_button)
 
         self._clear_button = QPushButton("Clear")
         self._clear_button.clicked.connect(self.clear)
@@ -122,8 +130,27 @@ class ValidateTab(QWidget):
         self._table.setRowCount(0)
         self._update_counts()
 
+    def set_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
+        self._diagnostics = _sort_diagnostics(list(diagnostics))
+        self._populate_table()
+        self._update_counts()
+
     def run_validation(self) -> None:
+        """Validate all: python validation + optional runtime validation."""
         self.clear()
+        self._run_python_validation()
+        if self._runtime_checkbox.isChecked():
+            self._request_runtime_validation()
+
+    def run_python_validation(self) -> None:
+        self.clear()
+        self._run_python_validation()
+
+    def run_runtime_validation(self) -> None:
+        self.clear()
+        self._request_runtime_validation()
+
+    def _run_python_validation(self) -> None:
         try:
             report = validate_project(self.project)
         except Exception as exc:
@@ -135,13 +162,26 @@ class ValidateTab(QWidget):
                     source="python",
                 )
             ])
-        self._diagnostics = _sort_diagnostics(list(report.diagnostics))
-        self._populate_table()
-        self._update_counts()
-        if self._runtime_checkbox.isChecked() and self._runtime_validate_callback is not None:
-            self._runtime_validate_callback()
+        self.set_diagnostics(report.diagnostics)
 
-    def set_runtime_validation_callback(self, callback: Callable[[], None]) -> None:
+    def _request_runtime_validation(self) -> None:
+        if self._runtime_validate_callback is None:
+            return
+        try:
+            immediate = self._runtime_validate_callback()
+        except Exception as exc:
+            immediate = [
+                Diagnostic(
+                    severity=Severity.WARNING,
+                    code="runtime_validation_request_failed",
+                    message=f"Failed to request runtime validation: {exc}",
+                    source="runtime",
+                )
+            ]
+        if immediate:
+            self.add_runtime_diagnostics(immediate)
+
+    def set_runtime_validation_callback(self, callback: Callable[[], list[Diagnostic]]) -> None:
         self._runtime_validate_callback = callback
 
     def add_runtime_diagnostics(self, diagnostics: list[Diagnostic]) -> None:

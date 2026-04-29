@@ -15,32 +15,35 @@ Covers:
 - Preview snapshot uses effective sockets
 - Changing catalog room handles socket inheritance
 """
-import pytest
 
 from behemoth_location_tool.io.location_factory import create_location_from_room
 from behemoth_location_tool.model.location import (
     ExitDefinition,
     LocationInstance,
     LocationsFile,
+    _sockets_equal,
+    change_location_catalog_room,
     get_effective_sockets,
     migrate_location_sockets,
-    change_location_catalog_room,
-    _sockets_equal,
 )
+from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.model.room import (
-    AmbientRule,
     RoomCatalog,
     RoomCatalogEntry,
     SocketDefinition,
 )
 from behemoth_location_tool.preview.snapshot import build_location_snapshot
-from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.validation.validator import validate_locations
-
 
 # ---- helpers ----
 
-def _make_socket(sid: str, name: str = "", x: int = 0, y: int = 0, layer: str = "characters") -> SocketDefinition:
+def _make_socket(
+    sid: str,
+    name: str = "",
+    x: int = 0,
+    y: int = 0,
+    layer: str = "characters",
+) -> SocketDefinition:
     return SocketDefinition(id=sid, name=name or sid, x=x, y=y, layer=layer)
 
 

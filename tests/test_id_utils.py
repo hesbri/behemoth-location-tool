@@ -1,14 +1,19 @@
 """Tests for unified scoped ID generation and scoped duplicate validation."""
-from behemoth_location_tool.model.id_utils import generate_id, generate_padded_id, normalize_id
 from behemoth_location_tool.model.entity import EntityDefinition
+from behemoth_location_tool.model.id_utils import generate_id, generate_padded_id, normalize_id
 from behemoth_location_tool.model.location import (
-    ExitDefinition, LocationInstance, LocationsFile, PlacedEntity,
+    ExitDefinition,
+    LocationInstance,
+    LocationsFile,
+    PlacedEntity,
 )
 from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry, SocketDefinition
 from behemoth_location_tool.validation.validator import (
-    validate_entities, validate_locations, validate_room_catalog, validate_unique_ids,
+    validate_entities,
+    validate_locations,
+    validate_room_catalog,
+    validate_unique_ids,
 )
-
 
 # ── normalize_id ─────────────────────────────────────────────────────────────
 
@@ -62,7 +67,10 @@ class TestGenerateId:
         assert result == "entrance_hall_3"
 
     def test_collision_skips_used(self) -> None:
-        result = generate_id("entrance_hall", existing_ids={"entrance_hall", "entrance_hall_2", "entrance_hall_3"})
+        result = generate_id(
+            "entrance_hall",
+            existing_ids={"entrance_hall", "entrance_hall_2", "entrance_hall_3"},
+        )
         assert result == "entrance_hall_4"
 
     def test_with_prefix(self) -> None:
@@ -216,7 +224,13 @@ class TestScopedDuplicateValidation:
                 LocationInstance(
                     id="hall", catalog_room_id="r1", name="Hall",
                     exits=[
-                        ExitDefinition(id="exit_1", entity_id="", target_location_id="hall", socket_id="", tags=["exit.default_back"]),
+                        ExitDefinition(
+                            id="exit_1",
+                            entity_id="",
+                            target_location_id="hall",
+                            socket_id="",
+                            tags=["exit.default_back"],
+                        ),
                         ExitDefinition(id="exit_1", entity_id="", target_location_id="hall", socket_id=""),
                     ],
                 ),
@@ -232,11 +246,27 @@ class TestScopedDuplicateValidation:
             locations=[
                 LocationInstance(
                     id="hall", catalog_room_id="r1", name="Hall",
-                    exits=[ExitDefinition(id="exit_1", entity_id="", target_location_id="kitchen", socket_id="", tags=["exit.default_back"])],
+                    exits=[
+                        ExitDefinition(
+                            id="exit_1",
+                            entity_id="",
+                            target_location_id="kitchen",
+                            socket_id="",
+                            tags=["exit.default_back"],
+                        )
+                    ],
                 ),
                 LocationInstance(
                     id="kitchen", catalog_room_id="r2", name="Kitchen",
-                    exits=[ExitDefinition(id="exit_1", entity_id="", target_location_id="hall", socket_id="", tags=["exit.default_back"])],
+                    exits=[
+                        ExitDefinition(
+                            id="exit_1",
+                            entity_id="",
+                            target_location_id="hall",
+                            socket_id="",
+                            tags=["exit.default_back"],
+                        )
+                    ],
                 ),
             ],
         )

@@ -2,28 +2,62 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QUndoStack
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QPushButton, QSpinBox, QSplitter, QVBoxLayout,
-    QWidget, QFormLayout, QScrollArea, QTextEdit, QTableWidget,
-    QTableWidgetItem, QHeaderView,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from behemoth_location_tool.io.location_factory import (
-    add_graph_node_for_location,
     add_default_back_exit_with_socket,
+    add_graph_node_for_location,
     create_location_from_room,
 )
 from behemoth_location_tool.io.locations_loader import load_locations, save_locations
 from behemoth_location_tool.model.common import Conditions, Rect
 from behemoth_location_tool.model.id_utils import generate_id, generate_padded_id
 from behemoth_location_tool.model.location import (
-    ExitDefinition, LocationInstance, LocationsFile, PlacedEntity,
-    change_location_catalog_room, find_catalog_room, get_effective_background,
-    get_effective_sockets, migrate_location_background, migrate_location_sockets,
+    ExitDefinition,
+    GraphNode,
+    LocationInstance,
+    LocationsFile,
+    change_location_catalog_room,
+    find_catalog_room,
+    get_effective_background,
+    get_effective_sockets,
+    migrate_location_background,
+    migrate_location_sockets,
 )
-from behemoth_location_tool.model.room import RoomCatalog, SocketDefinition
+from behemoth_location_tool.model.room import RoomCatalog
+from behemoth_location_tool.undo.commands import (
+    AddExitCommand,
+    AddLocationCommand,
+    DeleteExitCommand,
+    DeleteLocationCommand,
+    EditExitCommand,
+    EditLocationCommand,
+    exit_changed,
+    location_changed,
+)
 
 
 class LocationsTab(QWidget):
@@ -35,9 +69,12 @@ class LocationsTab(QWidget):
         self._catalog: RoomCatalog | None = None
         self._file_path: Path | None = None
         self._dirty = False
+        self._undo_dirty = False
         self._preview_callback: object | None = None
+        self._undo_stack: QUndoStack | None = None
         self._prev_row = -1
         self._loading = False
+        self._suppress_selection_sync = False
         self._build_ui()
 
     # ---- public API ----
@@ -46,6 +83,7 @@ class LocationsTab(QWidget):
         self._locations_file = load_locations(path)
         self._file_path = path
         self._dirty = False
+        self._undo_dirty = False
         self._refresh_list()
 
     def save_file(self, path: Path | None = None) -> None:
@@ -56,6 +94,7 @@ class LocationsTab(QWidget):
         save_locations(target, self._locations_file)
         self._file_path = target
         self._dirty = False
+        self._undo_dirty = False
 
     @property
     def locations_file(self) -> LocationsFile:
@@ -63,12 +102,28 @@ class LocationsTab(QWidget):
 
     @property
     def is_dirty(self) -> bool:
-        return self._dirty
+        return self._dirty or self._undo_dirty
 
     @property
     def current_location_id(self) -> str:
         loc = self._current_location()
         return loc.id if loc else ""
+
+    def select_location(self, location_id: str) -> bool:
+        for idx, loc in enumerate(self._locations_file.locations):
+            if loc.id == location_id:
+                self._list.setCurrentRow(idx)
+                return True
+        return False
+
+    def mark_dirty(self) -> None:
+        self._dirty = True
+
+    def mark_undo_dirty(self) -> None:
+        self._undo_dirty = True
+
+    def clear_undo_dirty(self) -> None:
+        self._undo_dirty = False
 
     def set_catalog(self, catalog: RoomCatalog) -> None:
         self._catalog = catalog
@@ -98,6 +153,11 @@ class LocationsTab(QWidget):
 
     def set_preview_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
         self._preview_callback = callback
+
+    def set_undo_stack(self, undo_stack: QUndoStack | None) -> None:
+        self._undo_stack = undo_stack
+        if undo_stack is not None:
+            undo_stack.indexChanged.connect(self._on_undo_stack_index_changed)
 
     # ---- UI construction ----
 
@@ -173,8 +233,12 @@ class LocationsTab(QWidget):
         bg_layout.addWidget(self._f_bg)
         bg_layout.addLayout(bg_btn_row)
 
-        self._f_width = QSpinBox(); self._f_width.setRange(1, 9999); self._f_width.setValue(1920)
-        self._f_height = QSpinBox(); self._f_height.setRange(1, 9999); self._f_height.setValue(1080)
+        self._f_width = QSpinBox()
+        self._f_width.setRange(1, 9999)
+        self._f_width.setValue(1920)
+        self._f_height = QSpinBox()
+        self._f_height.setRange(1, 9999)
+        self._f_height.setValue(1080)
         self._f_tags = QLineEdit()
         self._f_tags.setPlaceholderText("tag1, tag2")
         self._f_layers = QLineEdit()
@@ -246,10 +310,14 @@ class LocationsTab(QWidget):
         self._ef_locked = QCheckBox("Locked")
         # Clickable rect
         self._ef_cr_check = QCheckBox("Has Clickable Rect")
-        self._ef_cr_x = QSpinBox(); self._ef_cr_x.setRange(-9999, 9999)
-        self._ef_cr_y = QSpinBox(); self._ef_cr_y.setRange(-9999, 9999)
-        self._ef_cr_w = QSpinBox(); self._ef_cr_w.setRange(0, 9999)
-        self._ef_cr_h = QSpinBox(); self._ef_cr_h.setRange(0, 9999)
+        self._ef_cr_x = QSpinBox()
+        self._ef_cr_x.setRange(-9999, 9999)
+        self._ef_cr_y = QSpinBox()
+        self._ef_cr_y.setRange(-9999, 9999)
+        self._ef_cr_w = QSpinBox()
+        self._ef_cr_w.setRange(0, 9999)
+        self._ef_cr_h = QSpinBox()
+        self._ef_cr_h.setRange(0, 9999)
         # Conditions
         self._ef_req_tags = QLineEdit()
         self._ef_req_tags.setPlaceholderText("requiresTags")
@@ -303,7 +371,7 @@ class LocationsTab(QWidget):
                    self._sock_override_btn, self._sock_clear_btn, self._sock_sync_btn]:
             w.setEnabled(enabled)
 
-    def _refresh_list(self) -> None:
+    def _refresh_list(self, *, select_first: bool = True) -> None:
         self._list.blockSignals(True)
         self._list.clear()
         for loc in self._locations_file.locations:
@@ -311,7 +379,7 @@ class LocationsTab(QWidget):
             self._list.addItem(f"{prefix}{loc.id} — {loc.name}")
         self._list.blockSignals(False)
         self._f_start_label.setText(self._locations_file.start_location or "(not set)")
-        if self._locations_file.locations:
+        if select_first and self._locations_file.locations:
             self._list.setCurrentRow(0)
 
     def _current_location(self) -> LocationInstance | None:
@@ -375,7 +443,7 @@ class LocationsTab(QWidget):
         loc = self._current_location()
         if loc is None:
             return
-        # Re-run migration with the new catalog
+        # Reconcile inheritance metadata with the current catalog.
         migrate_location_background(loc, self._catalog)
         # For non-overridden locations, update background_image from catalog
         if not loc.background_overridden:
@@ -389,19 +457,45 @@ class LocationsTab(QWidget):
         if self._prev_row < 0 or self._prev_row >= len(self._locations_file.locations):
             return
         loc = self._locations_file.locations[self._prev_row]
-        loc.id = self._f_id.text().strip()
-        loc.catalog_room_id = self._f_catalog_room_id.currentText().strip()
-        loc.name = self._f_name.text().strip()
-        loc.description = self._f_desc.toPlainText().strip()
+        before = loc.model_copy(deep=True)
+        after = before.model_copy(deep=True)
+        after.id = self._f_id.text().strip()
+        after.catalog_room_id = self._f_catalog_room_id.currentText().strip()
+        after.name = self._f_name.text().strip()
+        after.description = self._f_desc.toPlainText().strip()
         # background_image is managed via override/clear/sync buttons
         # but also sync from the hidden field
         bg_text = self._f_bg.text().strip()
-        loc.background_image = bg_text or None
-        loc.design_size.w = self._f_width.value()
-        loc.design_size.h = self._f_height.value()
-        loc.tags = self._parse_csv(self._f_tags.text())
-        loc.layers = self._parse_csv(self._f_layers.text())
+        after.background_image = bg_text or None
+        after.design_size.w = self._f_width.value()
+        after.design_size.h = self._f_height.value()
+        after.tags = self._parse_csv(self._f_tags.text())
+        after.layers = self._parse_csv(self._f_layers.text())
         self._sync_exit_form()
+        if not location_changed(before, after):
+            return
+
+        def _on_location_changed() -> None:
+            self.mark_undo_dirty()
+            self._refresh_from_model_preserve_selection(
+                preferred_location_id=after.id,
+                preferred_exit_row=self._exit_list.currentRow(),
+            )
+
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                EditLocationCommand(
+                    locations_file=self._locations_file,
+                    index=self._prev_row,
+                    before=before,
+                    after=after,
+                    on_changed=_on_location_changed,
+                )
+            )
+            return
+
+        self._locations_file.locations[self._prev_row] = after
+        loc = after
         prefix = "★ " if loc.id == self._locations_file.start_location else "  "
         self._list.item(self._prev_row).setText(f"{prefix}{loc.id} — {loc.name}")
         self._dirty = True
@@ -415,31 +509,50 @@ class LocationsTab(QWidget):
         row = self._exit_list.currentRow()
         if row < 0 or row >= len(loc.exits):
             return
-        ex = loc.exits[row]
-        ex.id = self._ef_id.text().strip()
-        ex.entity_id = self._ef_entity_id.text().strip()
-        ex.target_location_id = self._ef_target.currentText().strip()
-        ex.socket_id = self._ef_socket_id.text().strip()
-        ex.layer = self._ef_layer.text().strip()
-        ex.tags = self._parse_csv(self._ef_tags.text())
-        ex.locked = self._ef_locked.isChecked()
+        before = loc.exits[row].model_copy(deep=True)
+        after = before.model_copy(deep=True)
+        after.id = self._ef_id.text().strip()
+        after.entity_id = self._ef_entity_id.text().strip()
+        after.target_location_id = self._ef_target.currentText().strip()
+        after.socket_id = self._ef_socket_id.text().strip()
+        after.layer = self._ef_layer.text().strip()
+        after.tags = self._parse_csv(self._ef_tags.text())
+        after.locked = self._ef_locked.isChecked()
         if self._ef_cr_check.isChecked():
-            ex.clickable_rect = Rect(
+            after.clickable_rect = Rect(
                 x=self._ef_cr_x.value(), y=self._ef_cr_y.value(),
                 w=self._ef_cr_w.value(), h=self._ef_cr_h.value(),
             )
         else:
-            ex.clickable_rect = None
-        ex.conditions = Conditions(
+            after.clickable_rect = None
+        after.conditions = Conditions(
             requires_tags=self._parse_csv(self._ef_req_tags.text()),
             forbidden_tags=self._parse_csv(self._ef_forb_tags.text()),
         )
+        if self._ensure_default_back_for_candidate(loc, row, after):
+            self._ef_tags.setText(", ".join(after.tags))
+        if not exit_changed(before, after):
+            return
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                EditExitCommand(
+                    location=loc,
+                    index=row,
+                    before=before,
+                    after=after,
+                    on_changed=self.mark_undo_dirty,
+                )
+            )
+            return
+        loc.exits[row] = after
+        self._dirty = True
+        ex = after
         self._exit_list.item(row).setText(f"{ex.id} → {ex.target_location_id or '?'}")
 
     def _load_location_to_form(self, loc: LocationInstance) -> None:
         self._loading = True
         try:
-            # Migrate legacy background data
+            # Reconcile background inheritance metadata before displaying.
             migrate_location_background(loc, self._catalog)
 
             self._f_id.setText(loc.id)
@@ -459,7 +572,7 @@ class LocationsTab(QWidget):
             self._f_tags.setText(", ".join(loc.tags))
             self._f_layers.setText(", ".join(loc.layers))
 
-            # Sockets — migrate legacy data first, then show effective sockets
+            # Sockets: reconcile inheritance metadata, then show effective sockets.
             migrate_location_sockets(loc, self._catalog)
             effective_sockets = get_effective_sockets(loc, self._catalog)
             self._socket_list.blockSignals(True)
@@ -539,7 +652,11 @@ class LocationsTab(QWidget):
             room = find_catalog_room(self._catalog, loc.catalog_room_id)
             if room:
                 count = len(room.sockets)
-                label = f"Sockets: Inherited from catalog ({loc.catalog_room_id}) — {count} socket{'s' if count != 1 else ''}"
+                socket_word = "socket" if count == 1 else "sockets"
+                label = (
+                    f"Sockets: Inherited from catalog ({loc.catalog_room_id}) — "
+                    f"{count} {socket_word}"
+                )
             else:
                 count = len(loc.sockets)
                 label = f"Sockets: No catalog room assigned — {count} socket{'s' if count != 1 else ''}"
@@ -611,6 +728,77 @@ class LocationsTab(QWidget):
         else:
             self._ef_target.setEditText(current_text)
         self._ef_target.blockSignals(False)
+
+    @staticmethod
+    def _is_default_back_exit(exit_def: ExitDefinition) -> bool:
+        return "exit.default_back" in exit_def.tags
+
+    def _ensure_default_back_for_candidate(
+        self,
+        loc: LocationInstance,
+        candidate_index: int,
+        candidate_exit: ExitDefinition,
+    ) -> bool:
+        """Ensure non-start locations always retain one default/back exit."""
+        if loc.id == self._locations_file.start_location:
+            return False
+        exits = [ex.model_copy(deep=True) for ex in loc.exits]
+        if 0 <= candidate_index < len(exits):
+            exits[candidate_index] = candidate_exit.model_copy(deep=True)
+        if any(self._is_default_back_exit(ex) for ex in exits):
+            return False
+        if "exit.default_back" in candidate_exit.tags:
+            return False
+        candidate_exit.tags = [*candidate_exit.tags, "exit.default_back"]
+        return True
+
+    @Slot(int)
+    def _on_undo_stack_index_changed(self, _index: int) -> None:
+        if not hasattr(self, "_undo_stack"):
+            return
+        if self._undo_stack is None:
+            return
+        try:
+            is_clean = self._undo_stack.isClean()
+        except RuntimeError:
+            self._undo_stack = None
+            return
+        if is_clean:
+            self._undo_dirty = False
+        self._refresh_from_model_preserve_selection()
+
+    def _refresh_from_model_preserve_selection(
+        self,
+        *,
+        preferred_location_id: str = "",
+        preferred_exit_row: int | None = None,
+    ) -> None:
+        current_location_id = preferred_location_id or self.current_location_id
+        current_exit_row = (
+            preferred_exit_row
+            if preferred_exit_row is not None
+            else self._exit_list.currentRow()
+        )
+        self._suppress_selection_sync = True
+        try:
+            self._prev_row = -1
+            self._refresh_list(select_first=False)
+            if not self._locations_file.locations:
+                self._clear_location_form()
+                self._set_form_enabled(False)
+                return
+            if not current_location_id or not self.select_location(current_location_id):
+                self._list.setCurrentRow(0)
+            loc = self._current_location()
+            if loc is None:
+                return
+            if loc.exits:
+                row = max(0, min(int(current_exit_row), len(loc.exits) - 1))
+                self._exit_list.setCurrentRow(row)
+            else:
+                self._clear_exit_form()
+        finally:
+            self._suppress_selection_sync = False
 
     def _notify_preview(self) -> None:
         if self._preview_callback is not None:
@@ -701,6 +889,14 @@ class LocationsTab(QWidget):
     # ---- slots ----
 
     def _on_selection_changed(self, row: int) -> None:
+        if self._suppress_selection_sync:
+            self._prev_row = row
+            if 0 <= row < len(self._locations_file.locations):
+                self._load_location_to_form(self._locations_file.locations[row])
+                self._set_form_enabled(True)
+            else:
+                self._set_form_enabled(False)
+            return
         self._sync_form_to_data()
         self._prev_row = row
         if 0 <= row < len(self._locations_file.locations):
@@ -711,6 +907,11 @@ class LocationsTab(QWidget):
             self._set_form_enabled(False)
 
     def _on_exit_selection_changed(self, row: int) -> None:
+        if self._suppress_selection_sync:
+            loc = self._current_location()
+            if loc and 0 <= row < len(loc.exits):
+                self._load_exit_to_form(loc.exits[row])
+            return
         self._sync_exit_form()
         loc = self._current_location()
         if loc and 0 <= row < len(loc.exits):
@@ -731,13 +932,32 @@ class LocationsTab(QWidget):
                 loc,
                 target_location_id=self._locations_file.start_location,
             )
-        self._locations_file.locations.append(loc)
-        add_graph_node_for_location(self._locations_file, loc.id)
-        if is_start:
-            self._locations_file.start_location = loc.id
-        self._refresh_list()
-        self._list.setCurrentRow(len(self._locations_file.locations) - 1)
-        self._dirty = True
+        if self._undo_stack is None:
+            self._locations_file.locations.append(loc)
+            add_graph_node_for_location(self._locations_file, loc.id)
+            if is_start:
+                self._locations_file.start_location = loc.id
+            self._refresh_list()
+            self._list.setCurrentRow(len(self._locations_file.locations) - 1)
+            self._dirty = True
+            return
+
+        node_x, node_y = 100, 100
+        if self._locations_file.graph.nodes:
+            last = self._locations_file.graph.nodes[-1]
+            node_x = last.x + 250
+            node_y = last.y
+        self._undo_stack.push(
+            AddLocationCommand(
+                locations_file=self._locations_file,
+                location=loc,
+                graph_node=GraphNode(location_id=loc.id, x=node_x, y=node_y),
+                index=len(self._locations_file.locations),
+                set_start_on_add=is_start,
+                on_changed=self.mark_undo_dirty,
+            )
+        )
+        self._refresh_from_model_preserve_selection(preferred_location_id=loc.id)
 
     def _on_add_from_catalog(self) -> None:
         if self._catalog is None:
@@ -760,34 +980,79 @@ class LocationsTab(QWidget):
             room, is_start=is_start,
             start_location_id=self._locations_file.start_location or "",
         )
-        self._locations_file.locations.append(loc)
-        add_graph_node_for_location(self._locations_file, loc.id)
-        if is_start:
-            self._locations_file.start_location = loc.id
-        self._refresh_list()
-        self._list.setCurrentRow(len(self._locations_file.locations) - 1)
-        self._dirty = True
+        if self._undo_stack is None:
+            self._locations_file.locations.append(loc)
+            add_graph_node_for_location(self._locations_file, loc.id)
+            if is_start:
+                self._locations_file.start_location = loc.id
+            self._refresh_list()
+            self._list.setCurrentRow(len(self._locations_file.locations) - 1)
+            self._dirty = True
+            return
+
+        node_x, node_y = 100, 100
+        if self._locations_file.graph.nodes:
+            last = self._locations_file.graph.nodes[-1]
+            node_x = last.x + 250
+            node_y = last.y
+        self._undo_stack.push(
+            AddLocationCommand(
+                locations_file=self._locations_file,
+                location=loc,
+                graph_node=GraphNode(location_id=loc.id, x=node_x, y=node_y),
+                index=len(self._locations_file.locations),
+                set_start_on_add=is_start,
+                on_changed=self.mark_undo_dirty,
+            )
+        )
+        self._refresh_from_model_preserve_selection(preferred_location_id=loc.id)
 
     def _on_delete(self) -> None:
         row = self._list.currentRow()
         if row < 0:
             return
         loc = self._locations_file.locations[row]
-        del self._locations_file.locations[row]
-        # Remove graph node
-        self._locations_file.graph.nodes = [
-            n for n in self._locations_file.graph.nodes if n.location_id != loc.id
-        ]
+        if self._undo_stack is None:
+            del self._locations_file.locations[row]
+            # Remove graph node
+            self._locations_file.graph.nodes = [
+                n for n in self._locations_file.graph.nodes if n.location_id != loc.id
+            ]
+            if self._locations_file.start_location == loc.id:
+                self._locations_file.start_location = (
+                    self._locations_file.locations[0].id if self._locations_file.locations else ""
+                )
+            self._prev_row = -1
+            self._refresh_list()
+            if not self._locations_file.locations:
+                self._clear_location_form()
+                self._set_form_enabled(False)
+            self._dirty = True
+            return
+
+        remaining = [item for item in self._locations_file.locations if item.id != loc.id]
+        start_after = self._locations_file.start_location
         if self._locations_file.start_location == loc.id:
-            self._locations_file.start_location = (
-                self._locations_file.locations[0].id if self._locations_file.locations else ""
+            start_after = remaining[0].id if remaining else ""
+        graph_node = next(
+            (
+                node.model_copy(deep=True)
+                for node in self._locations_file.graph.nodes
+                if node.location_id == loc.id
+            ),
+            None,
+        )
+        self._undo_stack.push(
+            DeleteLocationCommand(
+                locations_file=self._locations_file,
+                location=loc,
+                graph_node=graph_node,
+                index=row,
+                start_after=start_after,
+                on_changed=self.mark_undo_dirty,
             )
-        self._prev_row = -1
-        self._refresh_list()
-        if not self._locations_file.locations:
-            self._clear_location_form()
-            self._set_form_enabled(False)
-        self._dirty = True
+        )
+        self._refresh_from_model_preserve_selection()
 
     def _on_set_start(self) -> None:
         loc = self._current_location()
@@ -808,6 +1073,20 @@ class LocationsTab(QWidget):
             entity_id=new_id,
             target_location_id="", socket_id="",
         )
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                AddExitCommand(
+                    location=loc,
+                    exit_def=ex,
+                    index=len(loc.exits),
+                    on_changed=self.mark_undo_dirty,
+                )
+            )
+            self._refresh_from_model_preserve_selection(
+                preferred_location_id=loc.id,
+                preferred_exit_row=len(loc.exits) - 1,
+            )
+            return
         loc.exits.append(ex)
         self._exit_list.addItem(f"{ex.id} → ?")
         self._loading = True
@@ -822,6 +1101,34 @@ class LocationsTab(QWidget):
             return
         row = self._exit_list.currentRow()
         if row < 0 or row >= len(loc.exits):
+            return
+        start_id = self._locations_file.start_location
+        if loc.id != start_id:
+            default_back_indices = [
+                idx for idx, ex in enumerate(loc.exits)
+                if self._is_default_back_exit(ex)
+            ]
+            if row in default_back_indices and len(default_back_indices) == 1:
+                QMessageBox.warning(
+                    self,
+                    "Default Back Exit Required",
+                    "Non-start locations must keep at least one exit tagged exit.default_back.",
+                )
+                return
+        if self._undo_stack is not None:
+            deleted = loc.exits[row].model_copy(deep=True)
+            self._undo_stack.push(
+                DeleteExitCommand(
+                    location=loc,
+                    exit_def=deleted,
+                    index=row,
+                    on_changed=self.mark_undo_dirty,
+                )
+            )
+            self._refresh_from_model_preserve_selection(
+                preferred_location_id=loc.id,
+                preferred_exit_row=min(row, len(loc.exits) - 1),
+            )
             return
         del loc.exits[row]
         self._exit_list.blockSignals(True)

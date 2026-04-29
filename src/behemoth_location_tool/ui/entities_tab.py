@@ -1,19 +1,36 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QSpinBox, QSplitter, QVBoxLayout, QWidget, QFormLayout,
-    QCheckBox, QScrollArea, QTextEdit,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from behemoth_location_tool.io.entity_loader import load_entity_module, save_entity_module
 from behemoth_location_tool.model.common import PivotMode, Rect, SavePolicy
-from behemoth_location_tool.model.entity import EntityDefinition, EntityModule, EntityRenderData, EntitySpawnRules
+from behemoth_location_tool.model.entity import (
+    EntityDefinition,
+    EntityModule,
+    EntityRenderData,
+    EntitySpawnRules,
+)
 from behemoth_location_tool.model.id_utils import generate_id
 from behemoth_location_tool.model.project import ProjectConfig
 
@@ -138,13 +155,19 @@ class EntitiesTab(QWidget):
         self._f_default_layer = QLineEdit()
         self._f_pivot_mode = QComboBox()
         self._f_pivot_mode.addItems([m.value for m in PivotMode])
-        self._f_pivot_x = QSpinBox(); self._f_pivot_x.setRange(-9999, 9999)
-        self._f_pivot_y = QSpinBox(); self._f_pivot_y.setRange(-9999, 9999)
+        self._f_pivot_x = QSpinBox()
+        self._f_pivot_x.setRange(-9999, 9999)
+        self._f_pivot_y = QSpinBox()
+        self._f_pivot_y.setRange(-9999, 9999)
         self._f_has_rect = QCheckBox("Has Clickable Rect")
-        self._f_rect_x = QSpinBox(); self._f_rect_x.setRange(-9999, 9999)
-        self._f_rect_y = QSpinBox(); self._f_rect_y.setRange(-9999, 9999)
-        self._f_rect_w = QSpinBox(); self._f_rect_w.setRange(0, 9999)
-        self._f_rect_h = QSpinBox(); self._f_rect_h.setRange(0, 9999)
+        self._f_rect_x = QSpinBox()
+        self._f_rect_x.setRange(-9999, 9999)
+        self._f_rect_y = QSpinBox()
+        self._f_rect_y.setRange(-9999, 9999)
+        self._f_rect_w = QSpinBox()
+        self._f_rect_w.setRange(0, 9999)
+        self._f_rect_h = QSpinBox()
+        self._f_rect_h.setRange(0, 9999)
         render_form.addRow("Sprite:", sprite_row)
         render_form.addRow("", self._f_sprite_thumb)
         render_form.addRow("", self._f_sprite_warn)

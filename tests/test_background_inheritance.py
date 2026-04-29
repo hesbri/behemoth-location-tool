@@ -5,15 +5,17 @@ from behemoth_location_tool.io.location_factory import create_location_from_room
 from behemoth_location_tool.io.locations_loader import load_locations, save_locations
 from behemoth_location_tool.model.common import DesignSize
 from behemoth_location_tool.model.location import (
-    LocationInstance, LocationsFile,
-    change_location_catalog_room, find_catalog_room, get_effective_background,
+    LocationInstance,
+    LocationsFile,
+    change_location_catalog_room,
+    find_catalog_room,
+    get_effective_background,
     migrate_location_background,
 )
+from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.model.room import RoomCatalog, RoomCatalogEntry
 from behemoth_location_tool.preview.snapshot import build_location_snapshot
-from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.validation.validator import validate_locations
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -295,6 +297,7 @@ def test_location_roundtrip_default_not_overridden(tmp_path: Path) -> None:
 def test_legacy_file_without_overridden_field_is_rejected(tmp_path: Path) -> None:
     """Legacy schemaVersion files are rejected in v2-only mode."""
     import json
+
     import pytest
 
     legacy_data = {

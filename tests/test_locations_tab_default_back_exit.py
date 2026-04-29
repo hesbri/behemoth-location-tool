@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtWidgets import QApplication
-
 from conftest import requires_gui
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from behemoth_location_tool.io.location_factory import DEFAULT_BACK_EXIT_ENTITY_ID
 from behemoth_location_tool.model.entity import EntityDefinition
@@ -59,3 +58,30 @@ def test_locations_tab_new_non_start_has_real_default_back_exit() -> None:
     report = validate_locations(tab.locations_file, entities=entities)
     errors = [diag for diag in report.diagnostics if diag.severity.value == "error"]
     assert errors == [], [diag.message for diag in errors]
+
+
+@requires_gui
+def test_locations_tab_blocks_deleting_required_default_back_exit(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication(sys.argv)
+    assert app is not None
+
+    tab = LocationsTab()
+    tab._on_add_empty()  # start
+    tab._on_add_empty()  # non-start
+    tab._list.setCurrentRow(1)
+    tab._exit_list.setCurrentRow(0)
+
+    called: list[tuple[str, str]] = []
+
+    def _fake_warning(_parent, title: str, text: str):  # type: ignore[no-untyped-def]
+        called.append((title, text))
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", _fake_warning)
+
+    tab._on_delete_exit()
+
+    non_start = tab.locations_file.locations[1]
+    assert len(non_start.exits) == 1
+    assert "exit.default_back" in non_start.exits[0].tags
+    assert called, "Expected a warning when deleting required default/back exit"

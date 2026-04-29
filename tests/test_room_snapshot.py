@@ -1,15 +1,15 @@
 """Tests for room catalog visual preview snapshot generation."""
-import json
 from pathlib import Path
 
 from behemoth_location_tool.io.json_io import read_json
 from behemoth_location_tool.model.common import DesignSize, PivotMode
 from behemoth_location_tool.model.project import ProjectConfig
 from behemoth_location_tool.model.room import (
-    LayerConfig, RoomCatalogEntry, SocketDefinition,
+    LayerConfig,
+    RoomCatalogEntry,
+    SocketDefinition,
 )
 from behemoth_location_tool.preview.snapshot import (
-    build_empty_preview_snapshot,
     build_room_catalog_snapshot,
     write_preview_snapshot,
 )

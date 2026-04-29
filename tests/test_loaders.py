@@ -2,11 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from behemoth_location_tool.io.json_io import write_json
-from behemoth_location_tool.io.room_catalog_loader import load_room_catalog, save_room_catalog
+from behemoth_location_tool.io.json_io import read_json, write_json
 from behemoth_location_tool.io.locations_loader import load_locations, save_locations
 from behemoth_location_tool.io.project import load_project_or_default, save_project
+from behemoth_location_tool.io.room_catalog_loader import load_room_catalog, save_room_catalog
 from behemoth_location_tool.model.project import ProjectConfig
+from behemoth_location_tool.validation.schema_validator import validate_json_against_schema
 
 
 def test_load_room_catalog(tmp_path: Path) -> None:
@@ -72,7 +73,7 @@ def test_load_locations(tmp_path: Path) -> None:
 
 
 def test_save_and_reload_locations(tmp_path: Path) -> None:
-    from behemoth_location_tool.model.location import LocationsFile, LocationInstance, ExitDefinition
+    from behemoth_location_tool.model.location import ExitDefinition, LocationInstance, LocationsFile
     lf = LocationsFile(
         start_location="a", mansion_seed=99,
         locations=[LocationInstance(id="a", catalog_room_id="c", name="A",
@@ -85,6 +86,28 @@ def test_save_and_reload_locations(tmp_path: Path) -> None:
     reloaded = load_locations(path)
     assert reloaded.mansion_seed == 99
     assert reloaded.locations[0].exits[0].tags == ["exit.default_back"]
+
+
+def test_saved_locations_validate_against_schema(tmp_path: Path) -> None:
+    from behemoth_location_tool.model.location import LocationInstance, LocationsFile
+
+    locations = LocationsFile(
+        start_location="room_a",
+        locations=[
+            LocationInstance(
+                id="room_a",
+                catalog_room_id="catalog.room_a",
+                name="Room A",
+                socket_overridden=True,
+            )
+        ],
+    )
+    path = tmp_path / "locations.json"
+    save_locations(path, locations)
+
+    raw = read_json(path)
+    report = validate_json_against_schema(raw, "locations", file_path=str(path))
+    assert not report.has_errors
 
 
 def test_load_locations_rejects_schema_version(tmp_path: Path) -> None:

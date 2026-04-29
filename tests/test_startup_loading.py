@@ -5,9 +5,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import requires_gui
 
 from behemoth_location_tool.model.project import ProjectConfig
-from conftest import requires_gui
 
 
 def _fixture_root() -> Path:
@@ -82,3 +82,33 @@ def test_main_window_loads_project_data_on_startup(tmp_path: Path) -> None:
     assert len(win._locations_tab.locations_file.locations) == 3
     assert len(win._entities_tab.module.entities) == 4
     assert win._graph_tab._locations_file is win._locations_tab.locations_file
+
+
+@requires_gui
+def test_main_window_surfaces_locations_load_failures(tmp_path: Path) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from behemoth_location_tool.ui.main_window import MainWindow
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    assert app is not None
+
+    game_root = tmp_path / "game_root"
+    data_root = game_root / "data" / "behemoth" / "game"
+    _copy_fixture_tree(data_root)
+    (data_root / "locations.json").write_text(
+        '{\n  "version": 1,\n  "startLocation": "entrance_hall_01",\n  "locations": []\n}\n',
+        encoding="utf-8",
+    )
+
+    project = ProjectConfig(
+        project_name="Fixture Game",
+        game_root=game_root,
+        game_data_root=Path("data/behemoth/game"),
+    )
+    win = MainWindow(project, project_path=tmp_path / "projects" / "behemoth.json")
+
+    assert any(
+        diag.code == "locations_load_failed"
+        for diag in win._validate_tab._diagnostics
+    )

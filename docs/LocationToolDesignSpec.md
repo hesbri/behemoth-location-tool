@@ -1,5 +1,9 @@
 # Behemoth Location Authoring Tool — Design Spec v0.1
 
+> Note (current project direction): despite historical references in this draft spec, the
+> active tool implementation is v2-only. Normal-flow v1 fallback/import/migration support is
+> intentionally out of scope and should remain disabled.
+
 ## 1. Goal
 
 Build a standalone Python-based authoring tool for mansion-room locations in Behemoth.
@@ -549,6 +553,11 @@ The location should retain:
 - generated/applied placed entities
 
 This makes `locations.json` self-sufficient for the game runtime.
+
+Current implementation note: `locations.json` also retains the editor metadata
+fields `backgroundOverridden` and `socketOverridden`. They are v2 schema fields
+used by the Python tool to preserve catalog-inheritance intent while keeping the
+resolved runtime data in the same file. The game runtime may ignore these fields.
 
 ---
 

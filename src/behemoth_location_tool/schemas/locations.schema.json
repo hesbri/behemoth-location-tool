@@ -57,6 +57,7 @@
         },
         "tags": { "type": "array", "items": { "type": "string" } },
         "layers": { "type": "array", "items": { "type": "string" } },
+        "socketOverridden": { "type": "boolean" },
         "sockets": { "type": "array", "items": { "$ref": "#/$defs/socketDefinition" } },
         "exits": { "type": "array", "items": { "$ref": "#/$defs/exitDefinition" } },
         "placedEntities": { "type": "array", "items": { "$ref": "#/$defs/placedEntity" } }

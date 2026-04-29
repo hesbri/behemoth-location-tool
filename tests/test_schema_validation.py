@@ -1,5 +1,5 @@
 from pathlib import Path
-from behemoth_location_tool.io.json_io import write_json
+
 from behemoth_location_tool.validation.schema_validator import validate_json_against_schema
 
 

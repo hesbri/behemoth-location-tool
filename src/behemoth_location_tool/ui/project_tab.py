@@ -233,12 +233,20 @@ class ProjectTab(QWidget):
         if not exe or str(exe) == ".":
             errors.append("Game Executable is not set")
 
-        content_root = resolved / self.project.content_root if not self.project.content_root.is_absolute() else self.project.content_root.resolve()
+        content_root = (
+            resolved / self.project.content_root
+            if not self.project.content_root.is_absolute()
+            else self.project.content_root.resolve()
+        )
         settings = content_root / "config" / "settings.json"
         if not settings.parent.exists():
             errors.append(f"contentRoot/config/settings.json not found ({settings})")
 
-        game_data = resolved / self.project.game_data_root if not self.project.game_data_root.is_absolute() else self.project.game_data_root.resolve()
+        game_data = (
+            resolved / self.project.game_data_root
+            if not self.project.game_data_root.is_absolute()
+            else self.project.game_data_root.resolve()
+        )
         if not game_data.exists():
             warnings.append(f"gameDataRoot does not exist ({game_data})")
 
@@ -269,7 +277,11 @@ class ProjectTab(QWidget):
 
     def _open_game_data_folder(self) -> None:
         self._apply_fields_to_project()
-        path = self.project.game_root / self.project.game_data_root if not self.project.game_data_root.is_absolute() else self.project.game_data_root
+        path = (
+            self.project.game_root / self.project.game_data_root
+            if not self.project.game_data_root.is_absolute()
+            else self.project.game_data_root
+        )
         path = path.resolve()
         if path.exists():
             self._open_folder(path)
@@ -282,7 +294,11 @@ class ProjectTab(QWidget):
         if path.exists():
             self._open_folder(path)
         else:
-            QMessageBox.information(self, "Create Folder", f"Tool data folder does not exist yet:\n{path}\n\nIt will be created when needed.")
+            QMessageBox.information(
+                self,
+                "Create Folder",
+                f"Tool data folder does not exist yet:\n{path}\n\nIt will be created when needed.",
+            )
 
     @staticmethod
     def _open_folder(path: Path) -> None:

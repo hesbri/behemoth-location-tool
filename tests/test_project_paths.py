@@ -1,6 +1,6 @@
 """Tests for ProjectConfig path resolution relative to config file location."""
 from pathlib import Path
-from behemoth_location_tool.io.json_io import write_json
+
 from behemoth_location_tool.io.project import load_project_or_default, save_project
 from behemoth_location_tool.model.project import ProjectConfig
 
@@ -34,7 +34,14 @@ def test_resolve_paths_game_exec_relative_to_game_root(tmp_path: Path) -> None:
     project.resolve_paths(config_dir)
     game_root = (config_dir / ".." / "game").resolve()
     assert project.game_executable.is_absolute()
-    assert project.game_executable == game_root / "bin" / "BehemothLauncher" / "x64" / "Release" / "BehemothLauncher.exe"
+    assert project.game_executable == (
+        game_root
+        / "bin"
+        / "BehemothLauncher"
+        / "x64"
+        / "Release"
+        / "BehemothLauncher.exe"
+    )
 
 
 def test_resolve_paths_content_roots_relative_to_game_root(tmp_path: Path) -> None:

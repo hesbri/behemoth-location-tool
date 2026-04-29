@@ -1,10 +1,7 @@
 """Stage 14A: socket editor and asset browser polish."""
 from __future__ import annotations
 
-import ast
 from pathlib import Path
-
-import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "mansion_v2"
 SRC = Path(__file__).parent.parent / "src" / "behemoth_location_tool"

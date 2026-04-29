@@ -38,7 +38,9 @@ def save_entity_module(path: Path, module: EntityModule) -> None:
     write_json(path, module.model_dump(by_alias=True, mode="json", exclude_defaults=False))
 
 
-def load_all_entities(manifest_path: Path) -> tuple[EntityManifest, list[EntityModule], list[EntityDefinition]]:
+def load_all_entities(
+    manifest_path: Path,
+) -> tuple[EntityManifest, list[EntityModule], list[EntityDefinition]]:
     """Load the entity manifest and all included entity modules.
 
     Returns:

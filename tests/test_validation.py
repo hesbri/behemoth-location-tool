@@ -1,14 +1,26 @@
+from behemoth_location_tool.model.common import Conditions
 from behemoth_location_tool.model.entity import EntityDefinition, EntityRenderData
 from behemoth_location_tool.model.location import (
-    ExitDefinition, LocationInstance, LocationsFile, PlacedEntity,
+    ExitDefinition,
+    LocationInstance,
+    LocationsFile,
 )
 from behemoth_location_tool.model.room import (
-    AmbientRule, DesignSize, LayerConfig, RoomCatalog, RoomCatalogEntry,
-    SocketDefinition, WeightedEntityEntry, WeightedFillEntry,
+    AmbientRule,
+    DesignSize,
+    LayerConfig,
+    RoomCatalog,
+    RoomCatalogEntry,
+    SocketDefinition,
+    WeightedEntityEntry,
+    WeightedFillEntry,
 )
 from behemoth_location_tool.validation.diagnostics import Severity
 from behemoth_location_tool.validation.validator import (
-    validate_entities, validate_locations, validate_room_catalog, validate_unique_ids,
+    validate_entities,
+    validate_locations,
+    validate_room_catalog,
+    validate_unique_ids,
 )
 
 
@@ -106,6 +118,108 @@ def test_validate_locations_missing_reciprocal_exit() -> None:
     )
     report = validate_locations(lf)
     assert not any(d.code == "missing_reciprocal_exit" for d in report.diagnostics)
+
+
+def test_validate_locations_target_with_no_exits_reports_missing_reciprocal() -> None:
+    lf = LocationsFile(
+        start_location="a",
+        locations=[
+            LocationInstance(
+                id="a",
+                catalog_room_id="c",
+                name="A",
+                exits=[
+                    ExitDefinition(
+                        id="e1",
+                        entity_id="door",
+                        target_location_id="b",
+                        socket_id="s1",
+                        tags=["exit.default_back"],
+                    )
+                ],
+            ),
+            LocationInstance(id="b", catalog_room_id="c", name="B", exits=[]),
+        ],
+    )
+    report = validate_locations(lf)
+    assert any(d.code == "missing_reciprocal_exit" for d in report.diagnostics)
+
+
+def test_validate_locations_target_with_non_reciprocal_exit_reports_missing_reciprocal() -> None:
+    lf = LocationsFile(
+        start_location="a",
+        locations=[
+            LocationInstance(
+                id="a",
+                catalog_room_id="c",
+                name="A",
+                exits=[
+                    ExitDefinition(
+                        id="e1",
+                        entity_id="door",
+                        target_location_id="b",
+                        socket_id="s1",
+                        tags=["exit.default_back"],
+                    )
+                ],
+            ),
+            LocationInstance(
+                id="b",
+                catalog_room_id="c",
+                name="B",
+                exits=[
+                    ExitDefinition(
+                        id="e2",
+                        entity_id="door",
+                        target_location_id="c",
+                        socket_id="s1",
+                        tags=["exit.default_back"],
+                    )
+                ],
+            ),
+            LocationInstance(
+                id="c",
+                catalog_room_id="c",
+                name="C",
+                exits=[
+                    ExitDefinition(
+                        id="e3",
+                        entity_id="door",
+                        target_location_id="b",
+                        socket_id="s1",
+                        tags=["exit.default_back"],
+                    )
+                ],
+            ),
+        ],
+    )
+    report = validate_locations(lf)
+    assert any(d.code == "missing_reciprocal_exit" for d in report.diagnostics)
+
+
+def test_validate_locations_warns_for_flag_conditions_not_evaluated() -> None:
+    lf = LocationsFile(
+        start_location="a",
+        locations=[
+            LocationInstance(
+                id="a",
+                catalog_room_id="c",
+                name="A",
+                exits=[
+                    ExitDefinition(
+                        id="e1",
+                        entity_id="door",
+                        target_location_id="a",
+                        socket_id="s1",
+                        tags=["exit.default_back"],
+                        conditions=Conditions(requires_flags=["quest.started"]),
+                    )
+                ],
+            )
+        ],
+    )
+    report = validate_locations(lf)
+    assert any(d.code == "flag_conditions_not_evaluated" for d in report.diagnostics)
 
 
 # ---- Ambient rule validation tests ----

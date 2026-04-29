@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 
 from behemoth_location_tool.io.project import save_project
 from behemoth_location_tool.model.project import ProjectConfig
-
 
 # ---------------------------------------------------------------------------
 # Helper: skip all GUI tests if PySide6 cannot be imported
@@ -145,6 +144,13 @@ class TestCanonicalizationWording:
             if '"Generate"' in line and "_placeholder" in line:
                 pytest.fail("Generate tab still uses placeholder")
 
+    def test_main_window_wires_generate_preview_runtime_callback(self) -> None:
+        source = self._read_source("behemoth_location_tool.ui.main_window")
+        assert "set_send_preview_callback(self._send_generation_preview)" in source
+        assert "set_apply_callback(self._on_generation_applied)" in source
+        assert "def _send_generation_preview(" in source
+        assert "def _on_generation_applied(" in source
+
 
 # ===========================================================================
 # GUI tests (require PySide6)
@@ -241,6 +247,18 @@ class TestMainWindowGUI:
                      "Entities", "Generate", "Validate", "Preview"]
         assert tab_names == expected
 
+    def test_main_window_has_edit_menu_undo_redo(self, qapp) -> None:
+        win = self._make_window(qapp)
+        menu_bar = win.menuBar()
+        all_actions = [
+            action
+            for top in menu_bar.actions()
+            for action in (top.menu().actions() if top.menu() else [])
+        ]
+        labels = {action.text().replace("&", "") for action in all_actions}
+        assert "Undo" in labels
+        assert "Redo" in labels
+
     def test_menu_text_canonical(self, qapp) -> None:
         """Runtime check that menu text has no V1/V2/legacy."""
         win = self._make_window(qapp)
@@ -256,6 +274,269 @@ class TestMainWindowGUI:
             assert "v2" not in text
             assert "legacy" not in text
             assert "legacy" not in tip
+
+    def test_export_game_data_blocks_on_validation_errors_without_force(self, qapp, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.ui.main_window import MainWindow
+        from behemoth_location_tool.validation.diagnostics import Diagnostic, DiagnosticReport, Severity
+
+        win = MainWindow(ProjectConfig())
+        monkeypatch.setattr(
+            win,
+            "_build_export_validation_report",
+            lambda: DiagnosticReport(
+                diagnostics=[Diagnostic(severity=Severity.ERROR, code="x", message="bad")]
+            ),
+        )
+
+        saved_calls: list[bool] = []
+        monkeypatch.setattr(win, "_save_game_data", lambda **_kwargs: saved_calls.append(True) or [])
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Cancel,
+        )
+
+        win._on_export_game_data()
+
+        assert saved_calls == []
+
+    def test_export_game_data_can_force_after_validation_errors(self, qapp, monkeypatch) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.ui.main_window import MainWindow
+        from behemoth_location_tool.validation.diagnostics import Diagnostic, DiagnosticReport, Severity
+
+        win = MainWindow(ProjectConfig())
+        monkeypatch.setattr(
+            win,
+            "_build_export_validation_report",
+            lambda: DiagnosticReport(
+                diagnostics=[Diagnostic(severity=Severity.ERROR, code="x", message="bad")]
+            ),
+        )
+
+        saved_force_values: list[bool] = []
+
+        def _fake_save_game_data(  # type: ignore[no-untyped-def]
+            *,
+            force_all: bool = False,
+            sync_forms: bool = True,
+        ):
+            del sync_forms
+            saved_force_values.append(force_all)
+            return []
+
+        monkeypatch.setattr(win, "_save_game_data", _fake_save_game_data)
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        )
+        monkeypatch.setattr(
+            QMessageBox,
+            "information",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+        )
+
+        win._on_export_game_data()
+
+        assert saved_force_values == [True]
+
+    def test_save_game_data_marks_undo_stack_clean(self, qapp, monkeypatch) -> None:
+        from behemoth_location_tool.ui.main_window import MainWindow
+
+        win = MainWindow(ProjectConfig())
+        win._locations_tab._on_add_empty()
+        assert not win._undo_stack.isClean()
+
+        monkeypatch.setattr(win, "_save_game_data", lambda **_kwargs: [])
+        win._on_save_game_data()
+
+        assert win._undo_stack.isClean()
+
+    def test_save_game_data_syncs_live_room_form_before_write(
+        self, qapp, tmp_path: Path, monkeypatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.ui.main_window import MainWindow
+
+        project = ProjectConfig()
+        project.game_root = tmp_path
+        project.game_data_root = Path("data/behemoth/game")
+        project.tool_data_root = Path(".behemoth_tool")
+        win = MainWindow(project)
+        monkeypatch.setattr(
+            QMessageBox,
+            "critical",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+        )
+
+        win._room_catalog_tab._on_add()
+        win._room_catalog_tab._f_name.setText("Edited Room Name")
+        win._save_game_data(force_all=True)
+
+        saved = json.loads(
+            (project.absolute_game_data_root / "room_catalog.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert saved["version"] == 2
+        assert saved["rooms"][0]["name"] == "Edited Room Name"
+
+    def test_create_fresh_v2_game_data_creates_files_and_tool_folders(
+        self, qapp, tmp_path: Path, monkeypatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.ui.main_window import MainWindow
+
+        project = ProjectConfig()
+        project.game_root = tmp_path
+        project.game_data_root = Path("data/behemoth/game")
+        project.tool_data_root = Path(".behemoth_tool")
+        win = MainWindow(project)
+        monkeypatch.setattr(
+            QMessageBox,
+            "information",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+        )
+
+        win._on_create_fresh_v2_game_data()
+
+        data_root = project.absolute_game_data_root
+        tool_root = project.absolute_tool_root
+        assert (data_root / "entities.json").exists()
+        assert (data_root / "entity_modules" / "main.json").exists()
+        assert (data_root / "room_catalog.json").exists()
+        assert (data_root / "locations.json").exists()
+        assert (data_root / "tags.json").exists()
+        assert (tool_root / "preview").exists()
+        assert (tool_root / "cache").exists()
+        assert (tool_root / "schemas").exists()
+        assert len(win._locations_tab.locations_file.locations) == 1
+        assert win._locations_tab.locations_file.start_location == "location_01"
+
+        tags = json.loads((data_root / "tags.json").read_text(encoding="utf-8"))
+        assert tags == {"version": 2, "tags": []}
+        assert any(
+            entity.id == "exit.default_back"
+            for entity in win._entities_tab.module.entities
+        )
+
+    def test_fresh_data_default_back_exit_entity_prevents_missing_entity_ref(
+        self,
+        qapp,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.model.location import ExitDefinition
+        from behemoth_location_tool.model.room import SocketDefinition
+        from behemoth_location_tool.ui.main_window import MainWindow
+        from behemoth_location_tool.validation.validator import validate_locations
+
+        project = ProjectConfig()
+        project.game_root = tmp_path
+        project.game_data_root = Path("data/behemoth/game")
+        project.tool_data_root = Path(".behemoth_tool")
+        win = MainWindow(project)
+        monkeypatch.setattr(
+            QMessageBox,
+            "information",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+        )
+
+        win._on_create_fresh_v2_game_data()
+        win._locations_tab._on_add_empty()
+
+        start = win._locations_tab.locations_file.locations[0]
+        non_start = win._locations_tab.locations_file.locations[1]
+        start.sockets.append(
+            SocketDefinition(
+                id="start_socket",
+                name="Start Socket",
+                x=960,
+                y=980,
+                layer="exit_front",
+            )
+        )
+        start.socket_overridden = True
+        start.exits.append(
+            ExitDefinition(
+                id="start_to_non_start",
+                entity_id="exit.default_back",
+                target_location_id=non_start.id,
+                socket_id="start_socket",
+                layer="exit_front",
+                tags=["exit.default_back"],
+            )
+        )
+
+        report = validate_locations(
+            win._locations_tab.locations_file,
+            entities=win._entities_tab.module.entities,
+        )
+        assert not any(d.code == "missing_entity_ref" for d in report.diagnostics)
+
+    def test_export_blocks_on_unsynced_invalid_ui_data(
+        self,
+        qapp,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from behemoth_location_tool.ui.main_window import MainWindow
+
+        project = ProjectConfig()
+        project.game_root = tmp_path
+        project.game_data_root = Path("data/behemoth/game")
+        project.tool_data_root = Path(".behemoth_tool")
+        win = MainWindow(project)
+        monkeypatch.setattr(
+            QMessageBox,
+            "information",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+        )
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Cancel,
+        )
+
+        win._on_create_fresh_v2_game_data()
+        win._locations_tab._on_add_empty()
+        win._locations_tab.select_location("new_location")
+        win._locations_tab._exit_list.setCurrentRow(0)
+        win._locations_tab._ef_socket_id.setText("")
+
+        save_called: list[bool] = []
+        monkeypatch.setattr(
+            win,
+            "_save_game_data",
+            lambda **_kwargs: save_called.append(True) or [],
+        )
+
+        win._on_export_game_data()
+
+        assert save_called == []
+        assert any(
+            diagnostic.code == "exit_empty_socket_id"
+            for diagnostic in win._validate_tab._diagnostics
+        )
+
+    def test_file_menu_save_game_data_uses_standard_save_shortcut(self, qapp) -> None:
+        from behemoth_location_tool.ui.main_window import MainWindow
+
+        win = MainWindow(ProjectConfig())
+        first_action = win.menuBar().actions()[0]
+        file_menu = first_action.menu()
+        action = next(a for a in file_menu.actions() if a.text().replace("&", "") == "Save Game Data")
+        assert not action.shortcut().isEmpty()
 
 
 # ===========================================================================
@@ -315,6 +596,12 @@ class TestMainWindowSourceChecks:
         src = self._src("behemoth_location_tool.ui.main_window")
         assert "Save Project" in src or "save_action" in src
 
+    def test_main_window_has_export_actions(self) -> None:
+        src = self._src("behemoth_location_tool.ui.main_window")
+        assert "Export Game Data" in src
+        assert "Save Game Data" in src
+        assert "Save Project Config" in src
+
     def test_main_window_has_ctrl_s(self) -> None:
         src = self._src("behemoth_location_tool.ui.main_window")
         assert "StandardKey.Save" in src or "Ctrl+S" in src
@@ -335,6 +622,12 @@ class TestMainWindowSourceChecks:
     def test_validate_tab_has_copy_button(self) -> None:
         src = self._src("behemoth_location_tool.ui.validate_tab")
         assert "_copy_button" in src or "Copy" in src
+
+    def test_validate_tab_has_stage6_action_buttons(self) -> None:
+        src = self._src("behemoth_location_tool.ui.validate_tab")
+        assert "Validate All" in src
+        assert "Validate Python Only" in src
+        assert "Validate Runtime" in src
 
     def test_validate_tab_runtime_callback_hook_exists(self) -> None:
         src = self._src("behemoth_location_tool.ui.validate_tab")

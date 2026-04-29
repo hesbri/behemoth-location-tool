@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+
 from behemoth_location_tool.model.room import AmbientRule, WeightedFillEntry
 
 

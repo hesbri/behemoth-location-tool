@@ -2,27 +2,59 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QPixmap, QUndoStack
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QPushButton, QSpinBox, QSplitter, QVBoxLayout, QWidget, QFormLayout,
-    QScrollArea, QTextEdit, QCheckBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QStackedWidget,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from behemoth_location_tool.io.room_catalog_loader import load_room_catalog, save_room_catalog
 from behemoth_location_tool.model.common import DEFAULT_LAYERS, PivotMode
 from behemoth_location_tool.model.entity import EntityDefinition
-from behemoth_location_tool.model.id_utils import generate_id, generate_padded_id
+from behemoth_location_tool.model.id_utils import generate_padded_id
 from behemoth_location_tool.model.project import ProjectConfig
-from behemoth_location_tool.model.tags import matches_all, matches_none
 from behemoth_location_tool.model.room import (
-    AmbientRule, LayerConfig, RoomCatalog, RoomCatalogEntry, SocketDefinition,
-    WeightedEntityEntry, WeightedFillEntry,
+    LayerConfig,
+    RoomCatalog,
+    RoomCatalogEntry,
+    SocketDefinition,
+    WeightedEntityEntry,
+    WeightedFillEntry,
 )
+from behemoth_location_tool.model.tags import matches_all, matches_none
 from behemoth_location_tool.preview.snapshot import build_room_catalog_snapshot, write_preview_snapshot
 from behemoth_location_tool.ui.room_scene import RoomCanvas
+from behemoth_location_tool.undo.commands import (
+    AddRoomCommand,
+    AddSocketCommand,
+    DeleteRoomCommand,
+    DeleteSocketCommand,
+    EditRoomCommand,
+    EditSocketCommand,
+    MoveSocketCommand,
+    room_changed,
+    socket_changed,
+)
 
 
 class RoomCatalogTab(QWidget):
@@ -33,13 +65,17 @@ class RoomCatalogTab(QWidget):
         self._catalog: RoomCatalog = RoomCatalog()
         self._file_path: Path | None = None
         self._dirty = False
+        self._undo_dirty = False
         self._project = project
         self._entities: list[EntityDefinition] = []
         self._preview_callback: object | None = None  # set by MainWindow
         self._catalog_changed_callback: object | None = None  # set by MainWindow
+        self._undo_stack: QUndoStack | None = None
         self._updating_canvas = False  # guard for programmatic updates
         self._prev_row = -1
         self._loading = False
+        self._suppress_room_sync = False
+        self._suppress_socket_sync = False
         self._build_ui()
 
     # ---- public API ----
@@ -48,6 +84,7 @@ class RoomCatalogTab(QWidget):
         self._catalog = load_room_catalog(path)
         self._file_path = path
         self._dirty = False
+        self._undo_dirty = False
         self._refresh_list()
         if self._catalog_changed_callback is not None:
             self._catalog_changed_callback()
@@ -60,6 +97,7 @@ class RoomCatalogTab(QWidget):
         save_room_catalog(target, self._catalog)
         self._file_path = target
         self._dirty = False
+        self._undo_dirty = False
 
     @property
     def catalog(self) -> RoomCatalog:
@@ -67,7 +105,7 @@ class RoomCatalogTab(QWidget):
 
     @property
     def is_dirty(self) -> bool:
-        return self._dirty
+        return self._dirty or self._undo_dirty
 
     def set_preview_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
         """Set callback(room: RoomCatalogEntry) to trigger snapshot write + send."""
@@ -76,6 +114,11 @@ class RoomCatalogTab(QWidget):
     def set_catalog_changed_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
         """Set callback() triggered when rooms are added/deleted/catalog loaded."""
         self._catalog_changed_callback = callback
+
+    def set_undo_stack(self, undo_stack: QUndoStack | None) -> None:
+        self._undo_stack = undo_stack
+        if undo_stack is not None:
+            undo_stack.indexChanged.connect(self._on_undo_stack_index_changed)
 
     def set_entities(self, entities: list[EntityDefinition]) -> None:
         """Update the entity list used for ambient tag-query match counts."""
@@ -157,8 +200,12 @@ class RoomCatalogTab(QWidget):
         self._f_bg_warn = QLabel("")
         self._f_bg_warn.setStyleSheet("QLabel { color: #cc6600; font-size: 11px; }")
 
-        self._f_width = QSpinBox(); self._f_width.setRange(1, 9999); self._f_width.setValue(1920)
-        self._f_height = QSpinBox(); self._f_height.setRange(1, 9999); self._f_height.setValue(1080)
+        self._f_width = QSpinBox()
+        self._f_width.setRange(1, 9999)
+        self._f_width.setValue(1920)
+        self._f_height = QSpinBox()
+        self._f_height.setRange(1, 9999)
+        self._f_height.setValue(1080)
         self._f_id.textChanged.connect(self._update_list_item_text)
         self._f_name.textChanged.connect(self._update_list_item_text)
         self._f_bg.textChanged.connect(self._on_bg_text_changed)
@@ -226,16 +273,24 @@ class RoomCatalogTab(QWidget):
         # ---- Transform ----
         transform_group = QGroupBox("Transform")
         transform_form = QFormLayout(transform_group)
-        self._sf_x = QSpinBox(); self._sf_x.setRange(-9999, 9999)
-        self._sf_y = QSpinBox(); self._sf_y.setRange(-9999, 9999)
-        self._sf_rotation = QDoubleSpinBox(); self._sf_rotation.setRange(-360, 360); self._sf_rotation.setDecimals(1)
-        self._sf_scale = QDoubleSpinBox(); self._sf_scale.setRange(0.01, 100); self._sf_scale.setDecimals(2); self._sf_scale.setValue(1.0)
+        self._sf_x = QSpinBox()
+        self._sf_x.setRange(-9999, 9999)
+        self._sf_y = QSpinBox()
+        self._sf_y.setRange(-9999, 9999)
+        self._sf_rotation = QDoubleSpinBox()
+        self._sf_rotation.setRange(-360, 360)
+        self._sf_rotation.setDecimals(1)
+        self._sf_scale = QDoubleSpinBox()
+        self._sf_scale.setRange(0.01, 100)
+        self._sf_scale.setDecimals(2)
+        self._sf_scale.setValue(1.0)
         self._sf_pivot_mode = QComboBox()
         self._sf_pivot_mode.addItems([m.value for m in PivotMode])
         self._sf_layer = QComboBox()
         self._sf_layer.setEditable(True)
         self._sf_layer.addItems(DEFAULT_LAYERS)
-        self._sf_sort = QSpinBox(); self._sf_sort.setRange(-9999, 9999)
+        self._sf_sort = QSpinBox()
+        self._sf_sort.setRange(-9999, 9999)
         transform_form.addRow("X:", self._sf_x)
         transform_form.addRow("Y:", self._sf_y)
         transform_form.addRow("Rotation:", self._sf_rotation)
@@ -273,7 +328,8 @@ class RoomCatalogTab(QWidget):
         ambient_lay.addWidget(ambient_info)
 
         ambient_chance_row = QFormLayout()
-        self._sf_ambient_chance = QSpinBox(); self._sf_ambient_chance.setRange(0, 100)
+        self._sf_ambient_chance = QSpinBox()
+        self._sf_ambient_chance.setRange(0, 100)
         self._sf_ambient_chance.setSuffix("%")
         ambient_chance_row.addRow("Ambient Spawn Chance:", self._sf_ambient_chance)
         ambient_lay.addLayout(ambient_chance_row)
@@ -349,7 +405,9 @@ class RoomCatalogTab(QWidget):
         we_info.setStyleSheet("QLabel { color: #666; font-size: 11px; }")
         we_lay.addWidget(we_info)
         self._we_table = QTableWidget(0, 5)
-        self._we_table.setHorizontalHeaderLabels(["Type", "Entity ID", "Required Tags", "Forbidden Tags", "Weight"])
+        self._we_table.setHorizontalHeaderLabels(
+            ["Type", "Entity ID", "Required Tags", "Forbidden Tags", "Weight"]
+        )
         self._we_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._we_table.setMaximumHeight(150)
         we_lay.addWidget(self._we_table)
@@ -414,6 +472,12 @@ class RoomCatalogTab(QWidget):
             return self._catalog.rooms[row]
         return None
 
+    def _mark_undo_dirty(self) -> None:
+        self._undo_dirty = True
+
+    def clear_undo_dirty(self) -> None:
+        self._undo_dirty = False
+
     def _refresh_socket_list(self, room: RoomCatalogEntry) -> None:
         self._socket_list.blockSignals(True)
         self._socket_list.clear()
@@ -431,6 +495,62 @@ class RoomCatalogTab(QWidget):
         if 0 <= row < len(room.sockets):
             return room, row
         return None
+
+    def _after_socket_command(self, room: RoomCatalogEntry, preferred_socket_id: str = "") -> None:
+        self._mark_undo_dirty()
+        self._suppress_socket_sync = True
+        self._refresh_socket_list(room)
+        if preferred_socket_id:
+            for idx, sock in enumerate(room.sockets):
+                if sock.id == preferred_socket_id:
+                    self._socket_list.setCurrentRow(idx)
+                    break
+        result = self._current_socket()
+        if result is not None:
+            self._load_socket_to_form(result[0].sockets[result[1]])
+        else:
+            self._clear_socket_form()
+        self._suppress_socket_sync = False
+        self._refresh_canvas(room)
+        self._write_preview_snapshot()
+
+    def _after_room_command(self, preferred_room_id: str = "") -> None:
+        self._mark_undo_dirty()
+        self._suppress_room_sync = True
+        self._prev_row = -1
+        self._refresh_list()
+        if self._catalog.rooms:
+            row = 0
+            if preferred_room_id:
+                for idx, room in enumerate(self._catalog.rooms):
+                    if room.id == preferred_room_id:
+                        row = idx
+                        break
+            self._list.setCurrentRow(row)
+            self._load_room_to_form(self._catalog.rooms[row])
+            self._set_form_enabled(True)
+        else:
+            self._clear_room_form()
+            self._set_form_enabled(False)
+            self._canvas.room_scene.clear_sockets()
+            self._canvas.room_scene.set_background(None, 1920, 1080)
+        self._suppress_room_sync = False
+        if self._catalog_changed_callback is not None:
+            self._catalog_changed_callback()
+
+    @Slot(int)
+    def _on_undo_stack_index_changed(self, _index: int) -> None:
+        if not hasattr(self, "_undo_stack"):
+            return
+        if self._undo_stack is None:
+            return
+        try:
+            is_clean = self._undo_stack.isClean()
+        except RuntimeError:
+            self._undo_stack = None
+            return
+        if is_clean:
+            self._undo_dirty = False
 
     @staticmethod
     def _parse_csv(text: str) -> list[str]:
@@ -456,56 +576,94 @@ class RoomCatalogTab(QWidget):
         if self._prev_row < 0 or self._prev_row >= len(self._catalog.rooms):
             return
         room = self._catalog.rooms[self._prev_row]
-        room.id = self._f_id.text().strip()
-        room.name = self._f_name.text().strip()
-        room.description = self._f_desc.toPlainText().strip()
-        room.background_image = self._f_bg.text().strip() or None
-        room.design_size.w = self._f_width.value()
-        room.design_size.h = self._f_height.value()
-        room.tags = self._parse_csv(self._f_tags.text())
-        room.layers = LayerConfig(
+        # Socket edits are handled separately and may push their own command.
+        self._sync_socket_form()
+
+        before = room.model_copy(deep=True)
+        after = before.model_copy(deep=True)
+        after.id = self._f_id.text().strip()
+        after.name = self._f_name.text().strip()
+        after.description = self._f_desc.toPlainText().strip()
+        after.background_image = self._f_bg.text().strip() or None
+        after.design_size.w = self._f_width.value()
+        after.design_size.h = self._f_height.value()
+        after.tags = self._parse_csv(self._f_tags.text())
+        after.layers = LayerConfig(
             mode=self._f_layer_mode.currentText(),
             overrides=self._parse_csv(self._f_layer_overrides.text()),
             order=self._parse_csv(self._f_layer_order.text()),
         )
-        # Sync current socket
-        self._sync_socket_form()
+        if not room_changed(before, after):
+            return
+
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                EditRoomCommand(
+                    catalog=self._catalog,
+                    index=self._prev_row,
+                    before=before,
+                    after=after,
+                    on_changed=(lambda: self._after_room_command(after.id)),
+                )
+            )
+            return
+
+        self._catalog.rooms[self._prev_row] = after
+        room = after
 
         self._list.item(self._prev_row).setText(f"{room.id} — {room.name}")
         self._dirty = True
 
     def _sync_socket_form(self) -> None:
+        if self._loading or self._suppress_socket_sync:
+            return
         result = self._current_socket()
         if result is None:
             return
         room, idx = result
-        sock = room.sockets[idx]
-        sock.id = self._sf_id.text().strip()
-        sock.name = self._sf_name.text().strip()
-        sock.description = self._sf_desc.text().strip()
-        sock.x = self._sf_x.value()
-        sock.y = self._sf_y.value()
-        sock.rotation = self._sf_rotation.value()
-        sock.scale = self._sf_scale.value()
-        sock.pivot_mode = PivotMode(self._sf_pivot_mode.currentText())
-        sock.layer = self._sf_layer.currentText().strip()
-        sock.sort_order = self._sf_sort.value()
+        before = room.sockets[idx].model_copy(deep=True)
+        after = before.model_copy(deep=True)
+        after.id = self._sf_id.text().strip()
+        after.name = self._sf_name.text().strip()
+        after.description = self._sf_desc.text().strip()
+        after.x = self._sf_x.value()
+        after.y = self._sf_y.value()
+        after.rotation = self._sf_rotation.value()
+        after.scale = self._sf_scale.value()
+        after.pivot_mode = PivotMode(self._sf_pivot_mode.currentText())
+        after.layer = self._sf_layer.currentText().strip()
+        after.sort_order = self._sf_sort.value()
         # Placement eligibility
-        sock.required_tags = self._parse_csv(self._sf_req_tags.text())
-        sock.forbidden_tags = self._parse_csv(self._sf_forb_tags.text())
+        after.required_tags = self._parse_csv(self._sf_req_tags.text())
+        after.forbidden_tags = self._parse_csv(self._sf_forb_tags.text())
         # Ambient fill
-        sock.ambient_spawn_chance = self._sf_ambient_chance.value()
+        after.ambient_spawn_chance = self._sf_ambient_chance.value()
         mode = self._sf_ambient_mode.currentText()
-        sock.ambient_rule.mode = mode
+        after.ambient_rule.mode = mode
         # Mode-specific fields
         if mode == "tag_query":
-            sock.ambient_rule.required_tags = self._parse_csv(self._sf_ar_req_tags.text())
-            sock.ambient_rule.forbidden_tags = self._parse_csv(self._sf_ar_forb_tags.text())
+            after.ambient_rule.required_tags = self._parse_csv(self._sf_ar_req_tags.text())
+            after.ambient_rule.forbidden_tags = self._parse_csv(self._sf_ar_forb_tags.text())
         elif mode == "weighted_entity_list":
-            self._sync_weighted_entity_table_to_model(sock)
+            self._sync_weighted_entity_table_to_model(after)
         elif mode == "weighted_entries":
-            self._sync_fill_entry_table_to_model(sock)
-        self._socket_list.item(idx).setText(f"{sock.id} ({sock.name})")
+            self._sync_fill_entry_table_to_model(after)
+        if not socket_changed(before, after):
+            return
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                EditSocketCommand(
+                    room=room,
+                    index=idx,
+                    before=before,
+                    after=after,
+                    on_changed=(lambda: self._after_socket_command(room, after.id)),
+                )
+            )
+            return
+        room.sockets[idx] = after
+        self._socket_list.item(idx).setText(f"{after.id} ({after.name})")
+        self._dirty = True
 
     def _sync_weighted_entity_table_to_model(self, sock: SocketDefinition) -> None:
         """Read the weighted_entity_list table into the socket model."""
@@ -797,6 +955,9 @@ class RoomCatalogTab(QWidget):
     # ---- slots ----
 
     def _on_selection_changed(self, row: int) -> None:
+        if self._suppress_room_sync:
+            self._prev_row = row
+            return
         self._sync_form_to_catalog()
         self._prev_row = row
         if 0 <= row < len(self._catalog.rooms):
@@ -806,6 +967,11 @@ class RoomCatalogTab(QWidget):
             self._set_form_enabled(False)
 
     def _on_socket_selection_changed(self, row: int) -> None:
+        if self._suppress_socket_sync:
+            room = self._current_room()
+            if room and 0 <= row < len(room.sockets):
+                self._load_socket_to_form(room.sockets[row])
+            return
         self._sync_socket_form()
         room = self._current_room()
         if room and 0 <= row < len(room.sockets):
@@ -816,6 +982,16 @@ class RoomCatalogTab(QWidget):
         new_id = generate_padded_id("new_room", existing, fallback="room")
         new_name = f"New Room {len(self._catalog.rooms) + 1}"
         room = RoomCatalogEntry(id=new_id, name=new_name)
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                AddRoomCommand(
+                    catalog=self._catalog,
+                    room=room,
+                    index=len(self._catalog.rooms),
+                    on_changed=(lambda: self._after_room_command(room.id)),
+                )
+            )
+            return
         self._catalog.rooms.append(room)
         self._list.addItem(f"{room.id} — {room.name}")
         self._list.setCurrentRow(len(self._catalog.rooms) - 1)
@@ -826,6 +1002,23 @@ class RoomCatalogTab(QWidget):
     def _on_delete(self) -> None:
         row = self._list.currentRow()
         if row < 0:
+            return
+        if self._undo_stack is not None:
+            room = self._catalog.rooms[row].model_copy(deep=True)
+            preferred_id = ""
+            if len(self._catalog.rooms) > 1:
+                if row < len(self._catalog.rooms) - 1:
+                    preferred_id = self._catalog.rooms[row + 1].id
+                else:
+                    preferred_id = self._catalog.rooms[row - 1].id
+            self._undo_stack.push(
+                DeleteRoomCommand(
+                    catalog=self._catalog,
+                    room=room,
+                    index=row,
+                    on_changed=(lambda: self._after_room_command(preferred_id)),
+                )
+            )
             return
         del self._catalog.rooms[row]
         self._prev_row = -1
@@ -850,6 +1043,16 @@ class RoomCatalogTab(QWidget):
         new_id = generate_padded_id("new_socket", existing, fallback="socket")
         new_name = f"Socket {len(room.sockets) + 1}"
         sock = SocketDefinition(id=new_id, name=new_name)
+        if self._undo_stack is not None:
+            self._undo_stack.push(
+                AddSocketCommand(
+                    room=room,
+                    socket=sock,
+                    index=len(room.sockets),
+                    on_changed=(lambda: self._after_socket_command(room, sock.id)),
+                )
+            )
+            return
         room.sockets.append(sock)
 
         # Block signals so _on_socket_selection_changed doesn't overwrite
@@ -874,13 +1077,23 @@ class RoomCatalogTab(QWidget):
             return
         room, idx = result
         sock_id = room.sockets[idx].id
+        if self._undo_stack is not None:
+            deleted = room.sockets[idx].model_copy(deep=True)
+            self._undo_stack.push(
+                DeleteSocketCommand(
+                    room=room,
+                    socket=deleted,
+                    index=idx,
+                    on_changed=(lambda: self._after_socket_command(room)),
+                )
+            )
+            return
         del room.sockets[idx]
         # Remove handle from canvas
         scene = self._canvas.room_scene
         handle = scene.find_handle(sock_id)
         if handle:
             scene.removeItem(handle)
-            scene.socket_handles  # access to refresh
         self._refresh_socket_list(room)
         if not room.sockets:
             self._clear_socket_form()
@@ -895,8 +1108,25 @@ class RoomCatalogTab(QWidget):
             return
         for sock in room.sockets:
             if sock.id == socket_id:
-                sock.x = int(round(new_x))
-                sock.y = int(round(new_y))
+                moved_x = int(round(new_x))
+                moved_y = int(round(new_y))
+                if moved_x == sock.x and moved_y == sock.y:
+                    return
+                if self._undo_stack is not None:
+                    self._undo_stack.push(
+                        MoveSocketCommand(
+                            room=room,
+                            socket_id=socket_id,
+                            old_x=sock.x,
+                            old_y=sock.y,
+                            new_x=moved_x,
+                            new_y=moved_y,
+                            on_changed=(lambda: self._after_socket_command(room, socket_id)),
+                        )
+                    )
+                    return
+                sock.x = moved_x
+                sock.y = moved_y
                 # Update form if this socket is selected
                 result = self._current_socket()
                 if result and result[1] < len(room.sockets) and room.sockets[result[1]].id == socket_id:
@@ -1017,7 +1247,11 @@ class RoomCatalogTab(QWidget):
             self._dirty = True
 
 
-def _count_matching_entities(entities: list[EntityDefinition], required: list[str], forbidden: list[str]) -> int:
+def _count_matching_entities(
+    entities: list[EntityDefinition],
+    required: list[str],
+    forbidden: list[str],
+) -> int:
     """Count spawnable entities matching the tag query (hierarchical prefix matching)."""
     count = 0
     for ent in entities:

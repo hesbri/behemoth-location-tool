@@ -1,4 +1,6 @@
 import json
+import time
+from io import StringIO
 from pathlib import Path
 
 from behemoth_location_tool.model.project import ProjectConfig
@@ -143,3 +145,53 @@ def test_runtime_validation_result_callback() -> None:
     assert received[0]["severity"] == "error"
     assert received[1]["severity"] == "warning"
     assert received[2]["severity"] == "info"
+
+
+def test_launch_game_surfaces_stdout_stderr(monkeypatch, tmp_path: Path) -> None:
+    game_root = tmp_path / "game"
+    mount_root = game_root / "data" / "behemoth"
+    settings_dir = mount_root / "config"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text("{}", encoding="utf-8")
+    exe_path = game_root / "bin" / "Behemoth.exe"
+    exe_path.parent.mkdir(parents=True, exist_ok=True)
+    exe_path.write_text("", encoding="utf-8")
+
+    class _FakePopen:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.stdout = StringIO("hello from game\n")
+            self.stderr = StringIO("oops from game\n")
+
+        def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+            return 0
+
+        def terminate(self) -> None:
+            return
+
+        def kill(self) -> None:
+            return
+
+    monkeypatch.setattr("subprocess.Popen", _FakePopen)
+
+    project = ProjectConfig(
+        project_name="Test",
+        game_root=game_root,
+        game_executable=Path("bin/Behemoth.exe"),
+        content_root=Path("data/behemoth"),
+        preview_port=0,
+    )
+    ctrl = PreviewController(project)
+    seen: list[tuple[str, str]] = []
+    ctrl.on_diagnostic = lambda level, msg: seen.append((level, msg))
+    ctrl._launch_game()
+
+    deadline = time.time() + 1.0
+    while time.time() < deadline:
+        has_stdout = any("game:stdout" in msg for _level, msg in seen)
+        has_stderr = any("game:stderr" in msg for _level, msg in seen)
+        if has_stdout and has_stderr:
+            break
+        time.sleep(0.01)
+
+    assert any("game:stdout" in msg for _level, msg in seen)
+    assert any("game:stderr" in msg for _level, msg in seen)

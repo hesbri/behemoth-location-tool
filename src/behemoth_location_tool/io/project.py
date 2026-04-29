@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from pathlib import Path
+
 from behemoth_location_tool.io.json_io import read_json, write_json
 from behemoth_location_tool.model.project import ProjectConfig
 
